@@ -1,0 +1,147 @@
+package com.arcx.feature.runner.ui
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.arcx.core.designsystem.component.EmptyState
+import com.arcx.core.designsystem.component.SectionHeader
+import com.arcx.core.designsystem.component.StreamingIndicator
+import com.arcx.core.designsystem.component.WorkflowIcon
+import com.arcx.core.model.Workflow
+import com.arcx.feature.runner.RunnerUiState
+
+/**
+ * Step one when the caller did not name a workflow. A tap runs immediately — an extra
+ * confirmation would double the work of the fastest path in the product.
+ */
+@Composable
+internal fun WorkflowPicker(
+    state: RunnerUiState,
+    onQueryChange: (String) -> Unit,
+    onPick: (Workflow) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.imePadding()) {
+        Text(
+            text = "Run a workflow",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+        )
+
+        OutlinedTextField(
+            value = state.query,
+            onValueChange = onQueryChange,
+            placeholder = { Text("Search") },
+            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        when {
+            !state.catalogLoaded -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(96.dp),
+                contentAlignment = Alignment.Center,
+            ) { StreamingIndicator() }
+
+            state.sections.isEmpty() && state.query.isNotBlank() -> EmptyState(
+                icon = Icons.Outlined.Search,
+                title = "Nothing matches",
+                body = "Try a different word, or clear the search.",
+            )
+
+            state.sections.isEmpty() -> EmptyState(
+                icon = Icons.Outlined.AutoAwesome,
+                title = "No workflows yet",
+                body = "Build one in ArcX and it will show up here.",
+            )
+
+            else -> LazyColumn(
+                // Capped so the sheet stays an overlay on the app underneath rather than
+                // creeping up into a full screen.
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp),
+            ) {
+                state.sections.forEach { section ->
+                    section.title?.let { title ->
+                        item(key = "header-$title") { SectionHeader(title, Modifier.padding(top = 4.dp)) }
+                    }
+                    items(section.workflows, key = { it.id }) { workflow ->
+                        WorkflowRow(workflow, onClick = { onPick(workflow) })
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun WorkflowRow(workflow: Workflow, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        WorkflowIcon(workflow.icon, size = 40.dp)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = workflow.name,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "${workflow.category.label()} · ${workflow.output.label()}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (workflow.isPinned) {
+            Icon(
+                imageVector = Icons.Outlined.PushPin,
+                contentDescription = "Pinned",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}

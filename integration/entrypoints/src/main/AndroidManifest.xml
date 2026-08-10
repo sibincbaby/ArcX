@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A library manifest is merged into the app's, so every permission and component ArcX's launch
+  surfaces need is declared here rather than in :app. That keeps the cost of this module visible
+  in one place: delete the module and the permissions go with it.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The floating bubble: a foreground service that draws over other apps. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Only for the bubble's own ongoing notification, which Android forces us to post. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- So a bubble the user left switched on survives a reboot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application>
+
+        <!--
+          Bound by the system, never started by us. The BIND_ permission is what stops any other
+          app from binding it; exported="true" is mandatory because the binder is the system.
+        -->
+        <service
+            android:name="com.arcx.integration.entrypoints.accessibility.ArcxAccessibilityService"
+            android:exported="true"
+            android:label="@string/arcx_accessibility_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!--
+          specialUse is the honest type: the bubble is not media, location or data sync, it is a
+          persistent UI affordance. Play requires the subtype property below to justify it, and
+          reviewers read that string, so it states what the service actually does.
+        -->
+        <service
+            android:name="com.arcx.integration.entrypoints.overlay.OverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user's floating ArcX bubble drawn over other apps so an AI workflow can be launched from anywhere, for as long as the user leaves the bubble switched on." />
+        </service>
+
+        <receiver
+            android:name="com.arcx.integration.entrypoints.overlay.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- An app update stops the service without clearing the user's preference. -->
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+          App widget providers are driven by system broadcasts addressed to this component, so
+          unlike the rest of this module the receiver has to be exported.
+        -->
+        <receiver
+            android:name="com.arcx.integration.entrypoints.widget.FavoritesWidgetReceiver"
+            android:exported="true"
+            android:label="@string/arcx_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/favorites_widget_info" />
+        </receiver>
+
+        <service
+            android:name="com.arcx.integration.entrypoints.tile.ArcxTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_arcx_spark"
+            android:label="@string/arcx_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+    </application>
+
+</manifest>

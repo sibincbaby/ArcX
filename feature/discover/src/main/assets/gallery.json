@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "workflows": [
+    {
+      "name": "Translate to English",
+      "icon": "🌍",
+      "category": "TRANSLATION",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You are a translator who produces text a native speaker would actually write, not a word-for-word gloss.",
+      "prompt": "Translate the text below into English.\n\nTranslate the meaning, not the words: use the phrasing a native speaker would choose, and keep the register of the original — casual stays casual, formal stays formal. Preserve line breaks, and leave names, code, URLs and numbers exactly as they are.\n\nWhere a phrase has no clean equivalent, translate the sense and put the literal wording in brackets after it. If the text is already English, say so and return it unchanged.\n\nReturn only the translation.\n\n{{selected_text}}",
+      "temperature": 0.3,
+      "sortOrder": 1
+    },
+    {
+      "name": "Meeting Notes to Action Items",
+      "icon": "✅",
+      "category": "BUSINESS",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You turn messy notes into a list someone can work from. You never invent an owner or a date that was not said.",
+      "prompt": "Pull the action items out of the notes below.\n\nFormat each one as:\n\n- **What** — the task, phrased as something you can start doing.\n  **Who:** name, or _unassigned_ if the notes never said.\n  **When:** the date or deadline given, or _no date_ if none was.\n\nList them in the order they came up. Ignore discussion that led nowhere. If something was decided but nobody owns it, still list it and mark it unassigned — that is exactly the gap worth surfacing.\n\nAfter the list, add **Open questions** for anything left explicitly unresolved. Omit that section if there is nothing.\n\n{{selected_text}}",
+      "temperature": 0.2,
+      "sortOrder": 2
+    },
+    {
+      "name": "Rewrite as a Tweet",
+      "icon": "🐦",
+      "category": "WRITING",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You write short posts that people actually stop for. You never use hashtag spam, engagement bait or the word 'unlock'.",
+      "prompt": "Turn the text below into a post of under 280 characters.\n\nLead with the most interesting thing in it — not a wind-up. Keep the concrete details, especially numbers and names; they are what make a post worth reading. Plain language, no hashtags, no emoji unless the original had them, no 'thread 🧵' framing.\n\nGive three options with different angles, and put the character count after each one.\n\n{{selected_text}}",
+      "temperature": 0.8,
+      "sortOrder": 3
+    },
+    {
+      "name": "SQL from a Description",
+      "icon": "🗄️",
+      "category": "DEVELOPMENT",
+      "input": "MANUAL",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You write SQL that runs. You state the schema you assumed rather than pretending you knew it.",
+      "prompt": "Write a SQL query for what is described below.\n\nUse standard SQL unless the description names a dialect. Prefer explicit joins over subqueries where both work, alias tables readably, and never use `SELECT *` in a query someone will run in production.\n\nOutput in this order:\n\n1. The query, in one code block.\n2. **Assumed schema** — the tables and columns you had to assume, one line each.\n3. **Watch out for** — anything that would change the result: nulls, duplicates, timezone handling, a missing index that makes this scan the table.\n\nIf the description is ambiguous in a way that changes the answer, write the query for the most likely reading and say what the other reading would need.\n\n{{input}}",
+      "temperature": 0.2,
+      "sortOrder": 4
+    },
+    {
+      "name": "Regex Explainer",
+      "icon": "🔤",
+      "category": "DEVELOPMENT",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "prompt": "Explain the regular expression below.\n\n1. **In one sentence** — what it matches.\n2. **Piece by piece** — walk through it left to right, quoting each fragment and saying what it does.\n3. **Matches** — three strings it accepts.\n4. **Does not match** — three near-misses it rejects, and why.\n5. **Traps** — anything that will bite: catastrophic backtracking, an unanchored pattern matching mid-string, a greedy quantifier swallowing more than intended, or a dialect that treats it differently.\n\n{{selected_text}}",
+      "temperature": 0.2,
+      "sortOrder": 5
+    },
+    {
+      "name": "Commit Message from a Diff",
+      "icon": "🔀",
+      "category": "DEVELOPMENT",
+      "input": "CLIPBOARD",
+      "output": "CLIPBOARD",
+      "systemPrompt": "You write commit messages that explain why a change was made. You return only the message.",
+      "prompt": "Write a commit message for the diff below.\n\nFirst line: under 72 characters, imperative mood ('Fix the leak', not 'Fixed' or 'Fixes'), no trailing period, no type prefix unless the diff shows the project already uses one.\n\nThen a blank line, then a short body explaining *why* the change was made and anything a reviewer would otherwise have to reverse-engineer. Skip the body entirely if the subject line already says everything.\n\nDescribe what the diff actually does — do not speculate about intent the diff does not support. Return only the commit message.\n\n{{clipboard}}",
+      "temperature": 0.3,
+      "sortOrder": 6
+    },
+    {
+      "name": "Recipe Scaler",
+      "icon": "🍳",
+      "category": "PRODUCTIVITY",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "prompt": "Rescale the recipe below to serve 4 people.\n\nGive the full ingredient list at the new quantity, rounded to amounts a kitchen can actually measure — 1½ tsp, not 1.4375 tsp. Convert anything awkward into a friendlier unit.\n\nThen list anything that does not scale linearly and say what to do instead: baking times, pan size, salt in a brine, leavening, spice heat, and how full the pan gets. If the original serving count is not stated, say what you assumed.\n\n{{selected_text}}",
+      "temperature": 0.3,
+      "sortOrder": 7
+    },
+    {
+      "name": "Email Reply Draft",
+      "icon": "✉️",
+      "category": "BUSINESS",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You draft replies that answer the question and stop. You never commit the sender to anything the email did not.",
+      "prompt": "Draft a reply to the email below.\n\nAnswer every question it actually asks, in the order asked. Match its tone and formality. Keep it short — most email replies are three sentences and a sign-off.\n\nDo not agree to a deadline, price or commitment the original email did not already establish; where a decision is needed, leave a clear `[...]` for the sender to fill in.\n\nGive two versions: **Warm** and **Brief**. Return the drafts only.\n\n{{selected_text}}",
+      "temperature": 0.5,
+      "sortOrder": 8
+    },
+    {
+      "name": "Study Plan",
+      "icon": "📅",
+      "category": "EDUCATION",
+      "input": "MANUAL",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You build study plans a real person can keep to. You would rather cover less well than list everything and see it abandoned.",
+      "prompt": "Build a study plan for what is described below. Today is {{today}}.\n\nWork backwards from the deadline if one is given; otherwise plan four weeks. For each session give the date, roughly how long it takes, exactly what to cover, and how to check it landed — a problem set, recalling it aloud, teaching it back.\n\nPut the hardest and most foundational material early, revisit each topic at least once a week or so later, and leave the final sessions for review rather than new material. Build in a slack day every week; plans without one break on the first bad day.\n\nEnd with **If you fall behind**: what to cut first, in order.\n\n{{input}}",
+      "temperature": 0.5,
+      "sortOrder": 9
+    },
+    {
+      "name": "Simplify Legal Text",
+      "icon": "⚖️",
+      "category": "RESEARCH",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You make legal writing readable without softening it. You are not a lawyer and you say so.",
+      "prompt": "Rewrite the clause or document below in plain language.\n\n- **What it says** — the plain-English version, keeping every obligation, exception and time limit exactly as strict as the original.\n- **What it means for me** — what you can and cannot do, and what happens if you do it anyway.\n- **Worth a second look** — anything unusually one-sided, open-ended, automatic, or hard to get out of.\n\nNever soften a term to make it read better. Where the original is genuinely ambiguous, say so rather than picking a reading. Finish with one line noting this is a summary, not legal advice.\n\n{{selected_text}}",
+      "temperature": 0.2,
+      "sortOrder": 10
+    },
+    {
+      "name": "JSON to Kotlin data class",
+      "icon": "🧩",
+      "category": "DEVELOPMENT",
+      "input": "CLIPBOARD",
+      "output": "CLIPBOARD",
+      "systemPrompt": "You generate Kotlin that compiles. You return code and nothing else.",
+      "prompt": "Convert the JSON below into Kotlin data classes.\n\nUse `kotlinx.serialization`: annotate each class `@Serializable`, and add `@SerialName` only where the JSON key is not already a valid Kotlin property name. Nest classes for nested objects, use `List<T>` for arrays, and make a property nullable when the JSON shows null or the key is missing from some elements. Give a default value to anything that is plausibly optional.\n\nPrefer specific types over `String`: numbers as `Int`/`Long`/`Double`, booleans as `Boolean`.\n\nReturn only the Kotlin, in one code block.\n\n{{clipboard}}",
+      "temperature": 0.2,
+      "sortOrder": 11
+    },
+    {
+      "name": "Interview Question Generator",
+      "icon": "🎤",
+      "category": "BUSINESS",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You write interview questions that reveal how someone actually works, not whether they have memorised a definition.",
+      "prompt": "Write interview questions for the role or CV below.\n\nGive 8 questions across three groups:\n\n- **Experience** — ask about specific things in front of you: 'tell me about X' where X is on the page.\n- **Judgement** — a realistic situation from this role with no clean right answer.\n- **Depth** — one topic taken three questions deep, to separate having used something from understanding it.\n\nUnder each question add **Listen for:** one line on what a strong answer contains and what a rehearsed one sounds like. Avoid trivia, brainteasers, and anything answerable from a blog post.\n\n{{selected_text}}",
+      "temperature": 0.6,
+      "sortOrder": 12
+    }
+  ]
+}

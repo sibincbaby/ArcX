@@ -1,0 +1,86 @@
+package com.arcx.core.data.di
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.preferencesDataStore
+import androidx.room.Room
+import com.arcx.core.data.clipboard.ClipboardAccessImpl
+import com.arcx.core.data.database.ArcxDatabase
+import com.arcx.core.data.database.ProviderDao
+import com.arcx.core.data.database.RunDao
+import com.arcx.core.data.database.WorkflowDao
+import com.arcx.core.data.repository.HistoryRepositoryImpl
+import com.arcx.core.data.repository.ProviderRepositoryImpl
+import com.arcx.core.data.repository.SettingsRepositoryImpl
+import com.arcx.core.data.repository.WorkflowRepositoryImpl
+import com.arcx.core.domain.capture.ClipboardAccess
+import com.arcx.core.domain.repository.HistoryRepository
+import com.arcx.core.domain.repository.ProviderRepository
+import com.arcx.core.domain.repository.SettingsRepository
+import com.arcx.core.domain.repository.WorkflowRepository
+import dagger.Binds
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+
+private val Context.settingsPreferences by preferencesDataStore(name = "arcx_settings")
+private val Context.keyVaultPreferences by preferencesDataStore(name = "arcx_keys")
+
+@Module
+@InstallIn(SingletonComponent::class)
+internal object DataProvidesModule {
+
+    @Provides
+    @Singleton
+    fun database(@ApplicationContext context: Context): ArcxDatabase =
+        Room.databaseBuilder(context, ArcxDatabase::class.java, ArcxDatabase.NAME).build()
+
+    @Provides
+    fun workflowDao(database: ArcxDatabase): WorkflowDao = database.workflowDao()
+
+    @Provides
+    fun providerDao(database: ArcxDatabase): ProviderDao = database.providerDao()
+
+    @Provides
+    fun runDao(database: ArcxDatabase): RunDao = database.runDao()
+
+    @Provides
+    @Singleton
+    @SettingsDataStore
+    fun settingsDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
+        context.settingsPreferences
+
+    @Provides
+    @Singleton
+    @KeyVaultDataStore
+    fun keyVaultDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
+        context.keyVaultPreferences
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+internal abstract class DataModule {
+
+    @Binds
+    @Singleton
+    abstract fun workflowRepository(impl: WorkflowRepositoryImpl): WorkflowRepository
+
+    @Binds
+    @Singleton
+    abstract fun providerRepository(impl: ProviderRepositoryImpl): ProviderRepository
+
+    @Binds
+    @Singleton
+    abstract fun historyRepository(impl: HistoryRepositoryImpl): HistoryRepository
+
+    @Binds
+    @Singleton
+    abstract fun settingsRepository(impl: SettingsRepositoryImpl): SettingsRepository
+
+    @Binds
+    abstract fun clipboardAccess(impl: ClipboardAccessImpl): ClipboardAccess
+}

@@ -1,0 +1,180 @@
+{
+  "version": 1,
+  "workflows": [
+    {
+      "name": "Rewrite Professionally",
+      "icon": "💼",
+      "category": "WRITING",
+      "input": "SELECTED_TEXT",
+      "output": "REPLACE_SELECTION",
+      "systemPrompt": "You are an editor who rewrites text into a clear, professional register without inflating it. You return only the rewritten text.",
+      "prompt": "Rewrite the text below so it reads as clear, courteous and professional.\n\nKeep the original meaning, every fact and roughly the original length. Write in the same language as the input. Do not add a greeting or sign-off that was not already there, and do not make it more formal than the situation needs.\n\nReturn only the rewritten text: no preamble, no explanation, no surrounding quotes.\n\n{{selected_text}}",
+      "temperature": 0.4,
+      "isBuiltIn": true,
+      "isPinned": true,
+      "sortOrder": 1
+    },
+    {
+      "name": "Fix Grammar",
+      "icon": "✅",
+      "category": "WRITING",
+      "input": "SELECTED_TEXT",
+      "output": "REPLACE_SELECTION",
+      "systemPrompt": "You are a proofreader. You correct mistakes without rewriting the author's voice, and you return only the corrected text.",
+      "prompt": "Correct the spelling, grammar, punctuation and capitalisation in the text below.\n\nKeep the author's wording, tone, line breaks and formatting wherever they are already correct — do not paraphrase, reorder or restructure sentences. Keep the language of the input. If the text is already correct, return it unchanged.\n\nReturn only the corrected text: no preamble, no explanation, no list of the changes, no surrounding quotes.\n\n{{selected_text}}",
+      "temperature": 0.1,
+      "isBuiltIn": true,
+      "isPinned": true,
+      "sortOrder": 2
+    },
+    {
+      "name": "Make Shorter",
+      "icon": "✂️",
+      "category": "WRITING",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "prompt": "Condense the text below to about half its length.\n\nKeep every fact, name, number and commitment that matters, and keep the original tone and language. Cut filler, repetition and throat-clearing before you cut content. Preserve the original structure — if it was a list, return a list.\n\n{{selected_text}}",
+      "temperature": 0.3,
+      "isBuiltIn": true,
+      "sortOrder": 3
+    },
+    {
+      "name": "Expand",
+      "icon": "📝",
+      "category": "WRITING",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "prompt": "Expand the text below into a fuller version that stands on its own.\n\nAdd the context, detail and concrete examples a reader would need to follow it. Keep the original meaning, tone and language. Do not invent facts, names or numbers — if something needs a detail you were not given, write it as an explicit assumption in square brackets.\n\n{{selected_text}}",
+      "temperature": 0.6,
+      "isBuiltIn": true,
+      "sortOrder": 4
+    },
+    {
+      "name": "Explain Code",
+      "icon": "💻",
+      "category": "DEVELOPMENT",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You are a senior engineer explaining unfamiliar code to a competent developer who has never seen this codebase.",
+      "prompt": "Explain the code below.\n\n1. **What it does** — one sentence.\n2. **How it works** — a short walkthrough of the steps that matter, using the code's own identifiers.\n3. **Worth knowing** — side effects, edge cases, performance traps, or bugs you can actually see.\n\nSkip anything obvious from the syntax. Stay under 250 words.\n\n{{selected_text}}",
+      "temperature": 0.3,
+      "isBuiltIn": true,
+      "sortOrder": 5
+    },
+    {
+      "name": "Review Code",
+      "icon": "🔍",
+      "category": "DEVELOPMENT",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You are a careful code reviewer. You report real problems, ranked by consequence, and you do not pad a review with nitpicks.",
+      "prompt": "Review the code below.\n\nReport findings most serious first: correctness bugs, crashes, data loss, race conditions, security holes, resource leaks, then error handling, then readability. For each finding give the offending line, why it is wrong, and a concrete fix.\n\nIf the code has no serious problems, say so plainly instead of inventing issues. Note any assumption you had to make about code you cannot see.\n\n{{selected_text}}",
+      "temperature": 0.2,
+      "isBuiltIn": true,
+      "sortOrder": 6
+    },
+    {
+      "name": "Generate Tests",
+      "icon": "🧪",
+      "category": "DEVELOPMENT",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "prompt": "Write unit tests for the code below.\n\nUse the test framework that is idiomatic for its language. Cover the happy path, boundary values, and every error path the code can take. Name each test after the behaviour it pins down, and keep one behaviour per test. Where a dependency has to be faked, use the simplest stub that works.\n\nOutput the test code in a single code block, then one short note listing anything you could not test without seeing more of the codebase.\n\n{{selected_text}}",
+      "temperature": 0.3,
+      "isBuiltIn": true,
+      "sortOrder": 7
+    },
+    {
+      "name": "Explain Error",
+      "icon": "🐞",
+      "category": "DEVELOPMENT",
+      "input": "CLIPBOARD",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You are a debugging partner. You explain failures plainly and point at the smallest change that could fix them.",
+      "prompt": "Explain this error message or stack trace.\n\n1. **What went wrong** — in plain language.\n2. **Most likely cause** — based on the frames and messages actually shown, not on guesswork.\n3. **What to check first** — two or three concrete next steps, in order.\n\nIf the trace does not contain enough to be sure, say what is missing instead of speculating.\n\n{{input}}",
+      "temperature": 0.2,
+      "isBuiltIn": true,
+      "sortOrder": 8
+    },
+    {
+      "name": "Summarize Chapter",
+      "icon": "📚",
+      "category": "EDUCATION",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You help a student revise. You compress material without quietly dropping anything they will be tested on.",
+      "prompt": "Summarise the chapter below for revision.\n\n- **In one line:** what this chapter is about.\n- **Key ideas:** the main points, one bullet each, in the order the chapter makes them.\n- **Terms:** term — one-line definition, for every term the chapter introduces.\n- **Worth memorising:** any formula, date, rule or classification stated here.\n\nUse only what the text says. If the text runs out before a section is over, leave that section out.\n\n{{selected_text}}",
+      "temperature": 0.3,
+      "isBuiltIn": true,
+      "sortOrder": 9
+    },
+    {
+      "name": "Flashcards",
+      "icon": "🃏",
+      "category": "EDUCATION",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "prompt": "Turn the material below into flashcards.\n\nWrite 10 to 15 cards, one fact per card, formatted as:\n\n**Q:** ...\n**A:** ...\n\nEvery question must be answerable from the material alone, and every answer must be short enough to recall out loud. Prefer the facts an exam would actually ask for; skip decorative trivia. Do not repeat the same fact in two cards.\n\n{{selected_text}}",
+      "temperature": 0.4,
+      "isBuiltIn": true,
+      "sortOrder": 10
+    },
+    {
+      "name": "MCQs",
+      "icon": "❓",
+      "category": "EDUCATION",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "prompt": "Write 8 multiple-choice questions testing understanding — not recall of wording — of the material below.\n\nGive each question four options labelled A to D, with exactly one correct answer and three plausible distractors drawn from common misconceptions. Keep all four options the same length and style so the answer is not guessable from shape.\n\nAfter the questions, give the answer key with a one-line reason for each.\n\n{{selected_text}}",
+      "temperature": 0.5,
+      "isBuiltIn": true,
+      "sortOrder": 11
+    },
+    {
+      "name": "Notes",
+      "icon": "🗒️",
+      "category": "EDUCATION",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "prompt": "Rewrite the material below as structured study notes.\n\nUse a heading per topic, short bullets underneath, and bold for any term being defined. Keep every fact, formula, example and step; drop narration, repetition and filler. Preserve the source's order so the notes can be read alongside it.\n\nAim for something that can be reread in a fraction of the time the original takes.\n\n{{selected_text}}",
+      "temperature": 0.3,
+      "isBuiltIn": true,
+      "sortOrder": 12
+    },
+    {
+      "name": "Bullet Summary",
+      "icon": "📌",
+      "category": "RESEARCH",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "prompt": "Summarise the text below as 5 to 7 bullets.\n\nOne idea per bullet, in the author's order, each a complete sentence under 25 words. Keep the specifics — names, numbers, dates, conditions. Leave out anything the text only implies, and do not add your own conclusions.\n\n{{selected_text}}",
+      "temperature": 0.3,
+      "isBuiltIn": true,
+      "isPinned": true,
+      "sortOrder": 13
+    },
+    {
+      "name": "Fact Check",
+      "icon": "🕵️",
+      "category": "RESEARCH",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You are a fact-checker. You separate what a text asserts from what is actually established, and you are explicit about the limits of your own knowledge.",
+      "prompt": "Check the factual claims in the text below.\n\nFor each checkable claim: quote it, label it **Supported**, **Disputed**, **Unsupported** or **Needs a source**, and give one or two sentences of reasoning. Flag anything presented as fact that is really opinion, prediction or definition.\n\nDo not guess. Say so when a claim cannot be settled from what you know, and state plainly that you have no live access to sources and that your knowledge has a cut-off date.\n\n{{selected_text}}",
+      "temperature": 0.2,
+      "isBuiltIn": true,
+      "sortOrder": 14
+    },
+    {
+      "name": "Extract Key Points",
+      "icon": "🔑",
+      "category": "RESEARCH",
+      "input": "SELECTED_TEXT",
+      "output": "BOTTOM_SHEET",
+      "prompt": "Pull the substance out of the text below.\n\n- **Decisions:** what was decided or concluded.\n- **Actions:** who does what, and by when if a date is given.\n- **Open questions:** what is still unresolved.\n- **Numbers and dates:** anything quantitative worth keeping.\n\nOmit a section entirely if the text has nothing for it. Quote or paraphrase closely — no analysis of your own, and nothing that is not in the text.\n\n{{selected_text}}",
+      "temperature": 0.2,
+      "isBuiltIn": true,
+      "sortOrder": 15
+    }
+  ]
+}
