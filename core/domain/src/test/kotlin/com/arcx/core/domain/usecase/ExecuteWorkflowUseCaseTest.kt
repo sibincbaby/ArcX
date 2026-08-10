@@ -483,4 +483,28 @@ class ExecuteWorkflowUseCaseTest {
         assertEquals("text read off the screen", history.records.single().inputPreview)
     }
 
+
+    // A screenshot run sends pixels; without this, history shows a picture and nothing readable.
+    @Test
+    fun `screenshot run records the screen text alongside the image`() = runTest {
+        val history = FakeHistoryRepository()
+        val shot = Workflow(id = "s1", name = "Look", prompt = "Describe it", input = InputSource.SCREENSHOT)
+        val useCase = useCase(
+            workflows = FakeWorkflowRepository(listOf(shot)),
+            history = history,
+            screen = FakeScreenContextProvider(
+                available = true,
+                text = "words visible on the screen",
+                canCapture = true,
+                jpeg = byteArrayOf(1, 2, 3),
+            ),
+        )
+
+        useCase(shot, WorkflowInput()).test { cancelAndIgnoreRemainingEvents() }
+
+        val record = history.records.single()
+        assertEquals("words visible on the screen", record.inputPreview)
+        assertNotNull(record.screenshotPath)
+    }
+
 }

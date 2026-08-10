@@ -86,15 +86,25 @@ class ExecuteWorkflowUseCase @Inject constructor(
             screenshot?.let { Attachment(mimeType = JPEG, bytes = it) },
         )
 
+        // A screenshot run sends pixels, so there is no input text to record and history would
+        // show the run with nothing but a picture. Keep the screen's text alongside it: it is
+        // what makes an entry readable and searchable months later, it is already being read for
+        // this run, and it is never sent to the provider — only stored.
+        val recordedInput = if (workflow.input == InputSource.SCREENSHOT) {
+            inputText.ifBlank { readScreenText() }
+        } else {
+            inputText
+        }
+
         // Before the provider, deliberately: an imageless vision prompt costs a paid call to come
         // back with nothing useful. [needsText] never covers this — SCREENSHOT is not a text source.
         if (workflow.input == InputSource.SCREENSHOT && attachments.isEmpty()) {
-            fail(workflow, config, model, startedAt, inputText, AiError.NoScreenshot())
+            fail(workflow, config, model, startedAt, recordedInput, AiError.NoScreenshot())
             return@flow
         }
 
         if (inputText.isBlank() && attachments.isEmpty() && workflow.needsText) {
-            fail(workflow, config, model, startedAt, inputText, AiError.NoInput())
+            fail(workflow, config, model, startedAt, recordedInput, AiError.NoInput())
             return@flow
         }
 
@@ -123,10 +133,10 @@ class ExecuteWorkflowUseCase @Inject constructor(
 
         val error = failure
         if (error != null) {
-            fail(workflow, config, model, startedAt, inputText, error, answer.toString(), screenshot)
+            fail(workflow, config, model, startedAt, recordedInput, error, answer.toString(), screenshot)
         } else {
             val text = answer.toString()
-            record(workflow, config, model, startedAt, inputText, RunStatus.SUCCESS, text, null, screenshot)
+            record(workflow, config, model, startedAt, recordedInput, RunStatus.SUCCESS, text, null, screenshot)
             emit(ExecutionState.Success(text, time.nowMillis() - startedAt))
         }
     }
