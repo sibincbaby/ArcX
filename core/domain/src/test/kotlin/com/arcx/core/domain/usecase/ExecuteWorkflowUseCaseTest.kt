@@ -350,4 +350,20 @@ class ExecuteWorkflowUseCaseTest {
         assertFalse(prompt.contains("Summarise whatever is on screen"))
     }
 
+
+    // History must show what was actually sent, not the empty WorkflowInput a bubble launch carries.
+    @Test
+    fun `history records the resolved text, not the empty launch input`() = runTest {
+        val history = FakeHistoryRepository()
+        val useCase = useCase(
+            history = history,
+            clipboard = FakeClipboard(null),
+            screen = FakeScreenContextProvider(available = true, text = "text read off the screen"),
+        )
+
+        useCase(workflow, WorkflowInput()).test { cancelAndIgnoreRemainingEvents() }
+
+        assertEquals("text read off the screen", history.records.single().inputPreview)
+    }
+
 }

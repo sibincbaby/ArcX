@@ -52,30 +52,30 @@ class ExecuteWorkflowUseCase @Inject constructor(
 
         val config = providers.resolve(workflow.providerId)
         if (config == null) {
-            fail(workflow, null, "", startedAt, input, AiError.NoProvider())
+            fail(workflow, null, "", startedAt, input.text.orEmpty(), AiError.NoProvider())
             return@flow
         }
 
         val model = workflow.model ?: config.defaultModel
         val apiKey = providers.apiKey(config.id)
         if (!config.type.isLocal && apiKey.isNullOrBlank()) {
-            fail(workflow, config, model, startedAt, input, AiError.MissingKey(config.label))
+            fail(workflow, config, model, startedAt, input.text.orEmpty(), AiError.MissingKey(config.label))
             return@flow
         }
 
         val provider = registry[config.type]
         if (provider == null) {
-            fail(workflow, config, model, startedAt, input, AiError.NoProvider())
+            fail(workflow, config, model, startedAt, input.text.orEmpty(), AiError.NoProvider())
             return@flow
         }
 
-        val text = resolveText(workflow, input)
-        if (text.isBlank() && input.attachments.isEmpty() && workflow.needsText) {
-            fail(workflow, config, model, startedAt, input, AiError.NoInput())
+        val inputText = resolveText(workflow, input)
+        if (inputText.isBlank() && input.attachments.isEmpty() && workflow.needsText) {
+            fail(workflow, config, model, startedAt, inputText, AiError.NoInput())
             return@flow
         }
 
-        val vars = variables(text, input)
+        val vars = variables(inputText, input)
         val request = AiRequest(
             model = model,
             userPrompt = PromptTemplate.render(workflow.prompt, vars),
@@ -100,10 +100,10 @@ class ExecuteWorkflowUseCase @Inject constructor(
 
         val error = failure
         if (error != null) {
-            fail(workflow, config, model, startedAt, input, error, answer.toString())
+            fail(workflow, config, model, startedAt, inputText, error, answer.toString())
         } else {
             val text = answer.toString()
-            record(workflow, config, model, startedAt, input, RunStatus.SUCCESS, text, null)
+            record(workflow, config, model, startedAt, inputText, RunStatus.SUCCESS, text, null)
             emit(ExecutionState.Success(text, time.nowMillis() - startedAt))
         }
     }
@@ -189,11 +189,11 @@ class ExecuteWorkflowUseCase @Inject constructor(
         config: ProviderConfig?,
         model: String,
         startedAt: Long,
-        input: WorkflowInput,
+        inputText: String,
         error: AiError,
         partial: String = "",
     ) {
-        record(workflow, config, model, startedAt, input, RunStatus.FAILED, partial.ifEmpty { null }, error)
+        record(workflow, config, model, startedAt, inputText, RunStatus.FAILED, partial.ifEmpty { null }, error)
         emit(ExecutionState.Failed(error))
     }
 
@@ -202,7 +202,7 @@ class ExecuteWorkflowUseCase @Inject constructor(
         config: ProviderConfig?,
         model: String,
         startedAt: Long,
-        input: WorkflowInput,
+        inputText: String,
         status: RunStatus,
         output: String?,
         error: AiError?,
@@ -219,8 +219,11 @@ class ExecuteWorkflowUseCase @Inject constructor(
                 providerLabel = config?.label.orEmpty(),
                 model = model,
                 status = status,
-                // Previews only: the key never comes near this object and attachment bytes stay out of it.
-                inputPreview = input.text.orEmpty().preview(),
+                // The text actually sent to the provider, not WorkflowInput.text — a bubble,
+                // shortcut or tile launch carries no text of its own and resolves it from the
+                // clipboard or the screen, so recording the raw input left history blank.
+                // Previews only: the key never comes near this object, nor do attachment bytes.
+                inputPreview = inputText.preview(),
                 outputPreview = output?.preview(),
                 error = error?.message,
             ),

@@ -35,6 +35,16 @@ The Gradle wrapper is mandatory — the toolchain is AGP 9.3.1 / Gradle 9.7 / Ko
 Note that AGP 9 ships Kotlin itself, so the `kotlin-android` plugin must **not** be applied,
 and the Kotlin version is pinned by AGP rather than chosen independently.
 
+Testing the bubble or screen reading on Xiaomi/MIUI: **reinstalling revokes both the overlay
+permission and the accessibility service every time**, silently. After each `installDebug`:
+
+```bash
+adb shell appops set com.arcx.app SYSTEM_ALERT_WINDOW allow
+adb shell settings put secure enabled_accessibility_services \
+  com.arcx.app/com.arcx.integration.entrypoints.accessibility.ArcxAccessibilityService
+adb shell settings put secure accessibility_enabled 1
+```
+
 On first launch, onboarding asks for a provider key. Get a free Gemini key at
 [aistudio.google.com/apikey](https://aistudio.google.com/apikey) — `gemini-flash-lite-latest`
 is the default because it has the most generous free tier.

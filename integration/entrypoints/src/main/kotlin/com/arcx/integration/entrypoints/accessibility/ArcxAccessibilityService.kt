@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Past this the prompt costs more than the answer is worth, and long feeds are mostly chrome. */
@@ -28,6 +29,28 @@ private const val SNAPSHOT_TTL_MS = 2 * 60 * 1000L
 
 /** Window transitions arrive in bursts of two or three; this collapses them into one walk. */
 private const val SNAPSHOT_MIN_INTERVAL_MS = 500L
+
+/**
+ * Below this a read is treated as suspect rather than final.
+ *
+ * Chrome is the motivating case: measured on device, a freshly opened page yields 131 characters of
+ * pure toolbar ("Connection is secure", "See 2 tabs", "Customise and control Google Chrome") for
+ * about 1.3 seconds before the renderer's accessibility tree appears and the count jumps past 1900.
+ * Any real screen clears this bar easily, so the retry below almost never runs.
+ */
+private const val SUBSTANTIAL_TEXT_CHARS = 400
+
+/**
+ * Ceiling on *starting* another attempt at a thin read; a walk already under way is allowed to
+ * finish, so a huge tree can overrun this by the cost of one walk. Only the bubble's panel-open
+ * capture ever spends it, and nothing is waiting on that.
+ */
+private const val STABILISE_BUDGET_MS = 500L
+
+private const val STABILISE_STEP_MS = 100L
+
+/** How long two captures are assumed to be of the same screen. See `store`. */
+private const val SAME_SCREEN_WINDOW_MS = 8_000L
 
 /**
  * Backs [com.arcx.core.domain.capture.ScreenContextProvider].
@@ -48,8 +71,10 @@ private const val SNAPSHOT_MIN_INTERVAL_MS = 500L
  *
  * So there are two paths, and the cheap one is preferred:
  *
- *  - **Live**, whenever ArcX is not the top task. This is the case for the floating bubble, which
- *    is an overlay window and so never displaces the user's app. [captureScreen] exists for it.
+ *  - **Live**, whenever ArcX is not the top task. The floating bubble is an overlay window, so the
+ *    user's app stays the top task and stays readable — but only for as long as the bubble does not
+ *    take input focus. See `BubbleOverlay.EXPANDED_FLAGS`; taking focus is just as fatal as
+ *    launching an activity. The bubble calls [captureScreen] the moment its panel opens.
  *  - **Snapshot**, taken when another app brings a window to the front, for every other entry
  *    point — the tile, the widget, a launcher shortcut — all of which necessarily put something
  *    else in front before ArcX can run.
@@ -59,9 +84,9 @@ private const val SNAPSHOT_MIN_INTERVAL_MS = 500L
  * any scrolling app and would mean a tree walk per frame. `typeWindowStateChanged` fires when the
  * user opens a screen: rare, throttled here, and walked off the main thread.
  *
- * The cost is honest and worth naming: the snapshot is what the user opened, not necessarily what
- * they have since scrolled to, and it lives in memory for [SNAPSHOT_TTL_MS]. The user-facing
- * description in `strings.xml` says so.
+ * The costs are worth naming, and the user-facing description in `:core:designsystem` names them:
+ * a snapshot is what the user opened rather than what they have since scrolled to, and it lives in
+ * memory for [SNAPSHOT_TTL_MS].
  */
 class ArcxAccessibilityService : AccessibilityService() {
 
@@ -111,7 +136,10 @@ class ArcxAccessibilityService : AccessibilityService() {
         val now = SystemClock.elapsedRealtime()
         if (now - lastSnapshotAt < SNAPSHOT_MIN_INTERVAL_MS) return
         lastSnapshotAt = now
-        scope.launch { captureScreen() }
+        // A single walk, not the stabilising one. This snapshot is speculative — most are never
+        // read — so it does not get to spend four tree walks on every app switch the user makes.
+        // The bubble, which knows the user wants an answer right now, is the one that stabilises.
+        scope.launch { captureScreen(stabilise = false) }
     }
 
     override fun onInterrupt() = Unit
@@ -141,9 +169,57 @@ class ArcxAccessibilityService : AccessibilityService() {
      * displace the user's app, so this is a genuinely live read of what they are looking at, and
      * paying a few milliseconds on a tap is better than racing the runner activity.
      */
-    fun captureScreen() {
-        val fresh = readForegroundWindow() ?: return
+    suspend fun captureScreen(stabilise: Boolean = false) {
+        val fresh = if (stabilise) readUntilStable() else readForegroundWindow()
+        store(fresh ?: return)
+    }
+
+    /**
+     * Stores a capture unless it would be a downgrade of the same screen.
+     *
+     * The bubble captures twice — generously when its panel opens, then cheaply again when a
+     * workflow is picked — and the cheap second read can legitimately come back shorter, because an
+     * app's accessibility tree is rebuilt on demand and the first walk after a pause is sometimes
+     * only half-populated. Without this guard that second read would throw away the good one.
+     *
+     * Scoped tightly: only the same app, and only for a few seconds, which is exactly the span
+     * where the panel is covering the screen and the user cannot have navigated anywhere.
+     */
+    private fun store(fresh: ScreenSnapshot) {
+        val current = snapshot
+        val isRetryOfSameScreen = current != null &&
+            current.packageName == fresh.packageName &&
+            SystemClock.elapsedRealtime() - current.takenAt < SAME_SCREEN_WINDOW_MS
+        if (isRetryOfSameScreen && fresh.text.length < current.text.length) return
         snapshot = fresh
+    }
+
+    /**
+     * Reads once, and only pays for more if the first read looks half-built.
+     *
+     * The fast path is the whole point: any screen with real content clears
+     * [SUBSTANTIAL_TEXT_CHARS] on the first walk and this returns with no delay whatsoever, which
+     * is what keeps tapping a workflow feeling instant.
+     *
+     * When the first read *is* thin, growth is the signal rather than a guess about what browser
+     * chrome looks like — re-read, keep the longer result, and stop the moment a read fails to
+     * beat the one before it. A screen that is genuinely short (a dialog, a settings toggle) costs
+     * exactly one extra walk before that check ends the loop.
+     */
+    private suspend fun readUntilStable(): ScreenSnapshot? {
+        var best = readForegroundWindow() ?: return null
+        if (best.text.length >= SUBSTANTIAL_TEXT_CHARS) return best
+
+        val deadline = SystemClock.elapsedRealtime() + STABILISE_BUDGET_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            delay(STABILISE_STEP_MS)
+            // Null here means ArcX took the front mid-poll; the best read so far is still good.
+            val next = readForegroundWindow() ?: break
+            if (next.text.length <= best.text.length) break
+            best = next
+            if (best.text.length >= SUBSTANTIAL_TEXT_CHARS) break
+        }
+        return best
     }
 
     /**

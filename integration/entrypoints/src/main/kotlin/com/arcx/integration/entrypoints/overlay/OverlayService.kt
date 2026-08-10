@@ -92,6 +92,7 @@ class OverlayService : Service() {
             context = this,
             onWorkflow = { workflow -> launchDeepLink(workflow.id) },
             onMore = { launchDeepLink(workflowId = null) },
+            onExpanded = ::captureOnExpand,
         )
         if (!bubble.show()) {
             stopSelf()
@@ -119,17 +120,36 @@ class OverlayService : Service() {
     }
 
     /**
-     * Reads the screen *before* handing over to the runner, and does it synchronously.
+     * Reads the screen the moment the panel opens, and takes its time about it.
      *
-     * This is the one entry point that can capture what the user is actually looking at. The bubble
-     * is an overlay, so the app underneath is still the top task and still readable; a moment later
-     * the runner activity takes the front and accessibility stops exposing that window entirely.
-     * A few milliseconds of hitch on a deliberate tap is the right trade for the workflow getting
-     * live text instead of the snapshot taken when the screen was opened.
+     * This is the free capture. The user is now looking at a list of workflows deciding which one
+     * to tap, which is a second or more of slack, and the app underneath is still the top task so
+     * it is still readable. Stabilising here costs the user nothing, and it is what covers a page
+     * whose accessibility tree is still filling in — Chrome publishes web content roughly 1.3s
+     * after a page opens, so a bubble tapped quickly would otherwise capture only the toolbar.
+     */
+    private fun captureOnExpand() {
+        scope.launch(Dispatchers.IO) {
+            runCatching { AccessibilityServiceHolder.current()?.captureScreen(stabilise = true) }
+        }
+    }
+
+    /**
+     * One last cheap look, then launch — off the main thread, since even one walk is binder work.
+     *
+     * Deliberately *not* the stabilising read. This is the latency-critical moment: everything here
+     * happens between the user's tap and the runner appearing, so it gets a single walk and no
+     * retries. [captureOnExpand] already paid for a careful read a second or two ago, and the
+     * service keeps whichever of the two is better, so a thin read here costs nothing.
+     *
+     * It still has to finish before `startActivity`: the instant the runner window is up,
+     * accessibility stops exposing the app underneath and there is nothing left to read.
      */
     private fun launchDeepLink(workflowId: String?) {
-        runCatching { AccessibilityServiceHolder.current()?.captureScreen() }
-        runCatching { startActivity(ArcxDeepLinks.intent(this, workflowId)) }
+        scope.launch(Dispatchers.IO) {
+            runCatching { AccessibilityServiceHolder.current()?.captureScreen(stabilise = false) }
+            runCatching { startActivity(ArcxDeepLinks.intent(this@OverlayService, workflowId)) }
+        }
     }
 
     override fun onDestroy() {

@@ -6,7 +6,6 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.util.DisplayMetrics
 import android.view.Gravity
-import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -40,6 +39,8 @@ internal class BubbleOverlay(
     private val context: Context,
     private val onWorkflow: (Workflow) -> Unit,
     private val onMore: () -> Unit,
+    /** Fired the instant the panel opens — the last moment the app underneath is still readable. */
+    private val onExpanded: () -> Unit = {},
 ) {
 
     private val windowManager = context.getSystemService(WindowManager::class.java)
@@ -144,16 +145,6 @@ internal class BubbleOverlay(
                     }
                 }
             }
-            // Only reachable while expanded, since the collapsed window is not focusable.
-            isFocusableInTouchMode = true
-            setOnKeyListener { _, keyCode, event ->
-                if (expanded && keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-                    collapse()
-                    true
-                } else {
-                    false
-                }
-            }
         }
 
         val gestureHost = GestureHost(context).apply {
@@ -171,7 +162,6 @@ internal class BubbleOverlay(
                     FrameLayout.LayoutParams.WRAP_CONTENT,
                 ),
             )
-            isFocusableInTouchMode = true
         }
 
         host.create()
@@ -257,11 +247,9 @@ internal class BubbleOverlay(
         params.height = WindowManager.LayoutParams.MATCH_PARENT
         params.x = 0
         params.y = 0
-        // Dropping NOT_FOCUSABLE is what makes the panel interactive at all, and it is also what
-        // lets a workflow read the clipboard: since Android 10 only the focused window may.
         params.flags = EXPANDED_FLAGS
         applyLayout()
-        view?.requestFocus()
+        onExpanded()
     }
 
     private fun collapse() {
@@ -271,7 +259,6 @@ internal class BubbleOverlay(
         params.height = WindowManager.LayoutParams.WRAP_CONTENT
         params.x = collapsedX
         params.y = collapsedY
-        // Focusable again would steal every key press in the foreground app.
         params.flags = COLLAPSED_FLAGS
         applyLayout()
     }
@@ -367,8 +354,21 @@ internal class BubbleOverlay(
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 
-        const val EXPANDED_FLAGS =
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        /**
+         * Identical to collapsed, and NOT_FOCUSABLE staying on is the important part.
+         *
+         * Dropping it — the obvious thing to do when a panel appears — silently breaks the feature
+         * the bubble exists for. Measured on device: the moment this window takes focus, Android
+         * stops exposing the app underneath to accessibility entirely. `getWindows()` went from
+         * listing Chrome to listing nothing but two system bars and this overlay, so the workflow
+         * fell back to a stale snapshot and summarised a toolbar.
+         *
+         * Nothing is lost by staying unfocusable. A non-focusable window still receives touches, so
+         * the panel is fully interactive; it has no text input, so it never needs the IME; and the
+         * clipboard is read later by the runner activity, which has focus of its own. The one real
+         * cost is that the hardware back key cannot be observed, which is why tapping outside the
+         * panel dismisses it.
+         */
+        const val EXPANDED_FLAGS = COLLAPSED_FLAGS
     }
 }
