@@ -11,6 +11,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.widget.FrameLayout
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -45,7 +46,29 @@ internal class BubbleOverlay(
     private val host = OverlayViewHost()
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
-    private var view: ComposeView? = null
+    private var view: GestureHost? = null
+
+    /**
+     * Owns the collapsed bubble's tap and drag.
+     *
+     * The gesture has to live on a parent of the ComposeView rather than on a touch listener
+     * attached to it. A ComposeView is a ViewGroup, and a ViewGroup only consults its
+     * OnTouchListener when no child consumed the event — the AndroidComposeView child always
+     * consumes the stream, so `setOnTouchListener` on a ComposeView is silently never called.
+     * That is what made the bubble inert: the tap was delivered to the window and then dropped.
+     *
+     * While expanded we stop intercepting, so the panel's own Compose gestures work normally.
+     */
+    private inner class GestureHost(context: Context) : FrameLayout(context) {
+        override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = !expanded
+
+        override fun onTouchEvent(ev: MotionEvent): Boolean = onBubbleTouch(this, ev)
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            super.onLayout(changed, l, t, r, b)
+            if (!expanded) pullOnScreen(this)
+        }
+    }
     private var snapAnimator: ValueAnimator? = null
 
     private var expanded by mutableStateOf(false)
@@ -121,7 +144,6 @@ internal class BubbleOverlay(
                     }
                 }
             }
-            setOnTouchListener(::onBubbleTouch)
             // Only reachable while expanded, since the collapsed window is not focusable.
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, event ->
@@ -134,10 +156,28 @@ internal class BubbleOverlay(
             }
         }
 
+        val gestureHost = GestureHost(context).apply {
+            // The ViewTree owners must be on the window's root view, not only on the
+            // ComposeView: Compose builds the window recomposer by resolving the lifecycle
+            // owner from the root, so once the ComposeView stopped being the root it would
+            // throw "ViewTreeLifecycleOwner not found" the moment it attached.
+            setViewTreeLifecycleOwner(host)
+            setViewTreeViewModelStoreOwner(host)
+            setViewTreeSavedStateRegistryOwner(host)
+            addView(
+                composeView,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            isFocusableInTouchMode = true
+        }
+
         host.create()
         return runCatching {
-            windowManager.addView(composeView, params)
-            view = composeView
+            windowManager.addView(gestureHost, params)
+            view = gestureHost
             host.resume()
             true
         }.getOrDefault(false)
@@ -266,6 +306,38 @@ internal class BubbleOverlay(
             }
             start()
         }
+    }
+
+    /**
+     * Drags the bubble back inside the display if any of it ended up outside.
+     *
+     * `params.x` is measured from the window's parent frame, which excludes system insets,
+     * while [screenSize] describes the whole display. On a device with a display cutout those
+     * differ, and placing the bubble at `screenWidth - bubbleWidth` pushed all but a sliver of
+     * it past the right edge — visible enough to look fine in a screenshot, too small to hit.
+     * Measuring where the view actually landed is immune to whichever inset is in play, and to
+     * rotation, which changes the inset without any callback of its own.
+     */
+    private fun pullOnScreen(v: View) {
+        if (v.width == 0 || v.height == 0) return
+        val (screenWidth, screenHeight) = screenSize()
+        val location = IntArray(2).also { v.getLocationOnScreen(it) }
+
+        var x = params.x
+        var y = params.y
+        if (location[0] + v.width > screenWidth) x -= (location[0] + v.width) - screenWidth
+        if (location[0] < 0) x -= location[0]
+        if (location[1] + v.height > screenHeight) y -= (location[1] + v.height) - screenHeight
+        if (location[1] < 0) y -= location[1]
+        if (x == params.x && y == params.y) return
+
+        params.x = x
+        params.y = y
+        collapsedX = x
+        collapsedY = y
+        // Posted rather than applied inline: this runs from onLayout, and updating the window
+        // synchronously from there re-enters layout.
+        v.post { applyLayout() }
     }
 
     private fun applyLayout() {
