@@ -318,4 +318,36 @@ class ExecuteWorkflowUseCaseTest {
         assertFalse(provider.lastRequest!!.userPrompt.contains("Summarise clipboard text"))
     }
 
+
+    // Tapping the bubble while reading an article must act on that article.
+    @Test
+    fun `selected-text workflow with empty clipboard falls back to screen text`() = runTest {
+        val provider = FakeAiProvider(deltas = listOf("ok"))
+        val useCase = useCase(
+            provider = provider,
+            clipboard = FakeClipboard(null),
+            screen = FakeScreenContextProvider(available = true, text = "article on the screen"),
+        )
+
+        useCase(workflow, WorkflowInput()).test { cancelAndIgnoreRemainingEvents() }
+
+        assertTrue(provider.lastRequest!!.userPrompt.contains("article on the screen"))
+    }
+
+    @Test
+    fun `clipboard still wins over screen text when both are present`() = runTest {
+        val provider = FakeAiProvider(deltas = listOf("ok"))
+        val useCase = useCase(
+            provider = provider,
+            clipboard = FakeClipboard("copied on purpose"),
+            screen = FakeScreenContextProvider(available = true, text = "whatever is on screen"),
+        )
+
+        useCase(workflow, WorkflowInput()).test { cancelAndIgnoreRemainingEvents() }
+
+        val prompt = provider.lastRequest!!.userPrompt
+        assertTrue(prompt.contains("copied on purpose"))
+        assertFalse(prompt.contains("Summarise whatever is on screen"))
+    }
+
 }

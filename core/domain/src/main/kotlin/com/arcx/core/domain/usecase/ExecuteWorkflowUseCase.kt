@@ -128,11 +128,18 @@ class ExecuteWorkflowUseCase @Inject constructor(
         input.text?.takeIf { it.isNotBlank() }?.let { return it }
         return when (workflow.input) {
             InputSource.SCREEN_TEXT -> readScreenText()
+
+            // Launched from the bubble, a shortcut or a tile there is no selection to read, so
+            // the content has to come from somewhere. The clipboard first, because copying is
+            // deliberate and beats guessing; then the screen, because "act on what I am looking
+            // at" is the entire point of tapping the bubble while reading something. Without
+            // this the bubble refuses to work on the article filling the screen behind it.
             InputSource.SELECTED_TEXT,
             InputSource.SHARE_INTENT,
-            InputSource.CLIPBOARD,
-            InputSource.MANUAL,
-            -> readClipboard()
+            -> readClipboard().ifBlank { readScreenText() }
+
+            // These two name their source, so silently substituting another would be a lie.
+            InputSource.CLIPBOARD, InputSource.MANUAL -> readClipboard()
 
             else -> ""
         }
