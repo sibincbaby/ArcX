@@ -17,6 +17,7 @@ import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.domain.repository.WorkflowRepository
 import com.arcx.integration.entrypoints.ArcxDeepLinks
 import com.arcx.integration.entrypoints.R
+import com.arcx.integration.entrypoints.accessibility.AccessibilityServiceHolder
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -117,7 +118,17 @@ class OverlayService : Service() {
         }
     }
 
+    /**
+     * Reads the screen *before* handing over to the runner, and does it synchronously.
+     *
+     * This is the one entry point that can capture what the user is actually looking at. The bubble
+     * is an overlay, so the app underneath is still the top task and still readable; a moment later
+     * the runner activity takes the front and accessibility stops exposing that window entirely.
+     * A few milliseconds of hitch on a deliberate tap is the right trade for the workflow getting
+     * live text instead of the snapshot taken when the screen was opened.
+     */
     private fun launchDeepLink(workflowId: String?) {
+        runCatching { AccessibilityServiceHolder.current()?.captureScreen() }
         runCatching { startActivity(ArcxDeepLinks.intent(this, workflowId)) }
     }
 

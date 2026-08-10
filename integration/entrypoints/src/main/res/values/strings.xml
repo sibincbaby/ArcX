@@ -8,11 +8,9 @@
     <string name="arcx_accessibility_label">ArcX screen reading</string>
 
     <!--
-      Shown verbatim in Settings > Accessibility before the user turns the service on, and it is
-      the only place many users will ever read what this permission actually costs them. It says
-      what is read, when it is read, and where it goes; anything vaguer would be dishonest.
+      The description itself lives in :core:designsystem so this screen and Settings > Entry
+      points cannot disagree about what the permission does. See the comment there.
     -->
-    <string name="arcx_accessibility_description">Lets ArcX read the text on your screen so a workflow can act on whatever you are looking at — summarise an article, explain an error, reply to a message — without you selecting or copying anything first.\n\nArcX only reads the screen at the moment you run a workflow that needs it. It never records in the background, and password fields are skipped. The text it reads is sent to the AI provider you configured in ArcX, so only enable this if you are comfortable with that provider seeing what is on screen.\n\nYou can turn this off here at any time. Every other part of ArcX keeps working without it.</string>
 
     <string name="arcx_bubble_channel_name">Floating bubble</string>
     <string name="arcx_bubble_channel_description">Silent notification shown while the ArcX bubble is on screen. Android requires it.</string>

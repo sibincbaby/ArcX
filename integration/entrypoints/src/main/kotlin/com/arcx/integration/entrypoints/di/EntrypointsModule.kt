@@ -1,6 +1,8 @@
 package com.arcx.integration.entrypoints.di
 
 import com.arcx.core.domain.capture.ScreenContextProvider
+import com.arcx.core.domain.capture.SystemSurfaces
+import com.arcx.integration.entrypoints.ArcxEntrypoints
 import com.arcx.integration.entrypoints.accessibility.AccessibilityScreenContextProvider
 import dagger.Binds
 import dagger.Module
@@ -22,4 +24,9 @@ internal abstract class EntrypointsModule {
     abstract fun screenContextProvider(
         impl: AccessibilityScreenContextProvider,
     ): ScreenContextProvider
+
+    /** Lets :feature:settings show and request these permissions without depending on this module. */
+    @Binds
+    @Singleton
+    abstract fun systemSurfaces(impl: ArcxEntrypoints): SystemSurfaces
 }

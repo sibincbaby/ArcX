@@ -19,7 +19,14 @@ internal class AccessibilityScreenContextProvider @Inject constructor(
 
     override fun isAvailable(): Boolean = AccessibilityServiceHolder.isConnected
 
-    override fun currentPackage(): String? = AccessibilityServiceHolder.current()?.foregroundPackage
+    /**
+     * The last app the user had in front, never ArcX itself. Deliberately answered from the two
+     * values the service already keeps rather than by inspecting windows: this is not a suspending
+     * call, so it has to stay free of binder traffic.
+     */
+    override fun currentPackage(): String? = AccessibilityServiceHolder.current()?.let {
+        it.foregroundPackage ?: it.snapshotPackage()
+    }
 
     /**
      * Off the main thread: reading a node tree is synchronous IPC into the inspected app, and on a

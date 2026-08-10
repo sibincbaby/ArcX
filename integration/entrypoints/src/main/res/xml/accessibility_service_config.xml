@@ -1,17 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  accessibilityEventTypes is deliberately narrow. Subscribing to typeWindowContentChanged would
-  wake this service on every frame of a scrolling feed; the only thing ArcX needs pushed to it is
-  "which app is in front", which typeWindowStateChanged already answers. The screen itself is read
-  on demand, when a workflow asks for it.
+  accessibilityEventTypes is deliberately narrow. typeWindowStateChanged fires when the user opens
+  a screen or switches app — a handful of times a minute at worst. typeWindowContentChanged, which
+  is what a service would need to follow scrolling, fires dozens of times a second in any feed and
+  is the classic way an accessibility service ruins a phone's battery. ArcX takes the staleness
+  instead; see ArcxAccessibilityService for what that costs.
 
   notificationTimeout throttles the events the system does deliver, so a burst of window changes
   during an app launch collapses into one callback.
+
+  flagRetrieveInteractiveWindows is what makes getWindows() return anything, which is how the
+  service tells the user's app apart from ArcX's own window and from system UI. Note that it does
+  not widen this as far as you would hope: Android exposes only the top task's application window,
+  so a window sitting behind ArcX's runner is unreadable no matter what is set here.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
     android:description="@string/arcx_accessibility_description"
     android:notificationTimeout="200" />

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
@@ -20,8 +21,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcx.core.model.ThemePreference
 
@@ -30,11 +33,22 @@ import com.arcx.core.model.ThemePreference
  * handful of leaves that nothing outside this module ever links to, so a screen enum plus
  * [BackHandler] is the whole router.
  */
-private enum class SettingsScreen { ROOT, PROVIDERS, PROVIDER_EDIT, APPEARANCE, PRIVACY, ABOUT }
+private enum class SettingsScreen {
+    ROOT, PROVIDERS, PROVIDER_EDIT, ENTRY_POINTS, APPEARANCE, PRIVACY, ABOUT
+}
 
 @Composable
 fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // Overlay and accessibility can both be revoked from system Settings while ArcX is away,
+    // and the root row summarises them, so the refresh lives at the route rather than inside
+    // the one screen that shows them in full.
+    LifecycleResumeEffect(Unit) {
+        viewModel.onResume()
+        onPauseOrDispose { }
+    }
 
     var screen by rememberSaveable { mutableStateOf(SettingsScreen.ROOT) }
     var editingProviderId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -74,6 +88,18 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
             providerId = editingProviderId,
             onDone = { screen = SettingsScreen.PROVIDERS },
             viewModel = hiltViewModel(key = "provider-edit-$editSession"),
+        )
+
+        SettingsScreen.ENTRY_POINTS -> EntryPointsScreen(
+            bubbleEnabled = state.settings.bubbleEnabled,
+            overlayGranted = state.permissions.overlayGranted,
+            screenReadingEnabled = state.permissions.screenReadingEnabled,
+            onBack = { screen = SettingsScreen.ROOT },
+            onBubbleEnabledChange = viewModel::onBubbleEnabledChange,
+            onOpenOverlaySettings = { context.startActivity(viewModel.overlaySettingsIntent()) },
+            onOpenScreenReadingSettings = {
+                context.startActivity(viewModel.screenReadingSettingsIntent())
+            },
         )
 
         SettingsScreen.APPEARANCE -> AppearanceScreen(
@@ -116,6 +142,12 @@ private fun SettingsRootScreen(
                     onClick = { onOpen(SettingsScreen.PROVIDERS) },
                 )
                 SettingsRow(
+                    title = "Entry points",
+                    subtitle = entryPointsSubtitle(state),
+                    icon = Icons.Outlined.Bolt,
+                    onClick = { onOpen(SettingsScreen.ENTRY_POINTS) },
+                )
+                SettingsRow(
                     title = "Appearance",
                     subtitle = themeLabel(state.settings.theme),
                     icon = Icons.Outlined.Palette,
@@ -141,6 +173,16 @@ private fun SettingsRootScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+private fun entryPointsSubtitle(state: SettingsUiState): String {
+    val bubble = if (state.bubbleActive) "Bubble on" else "Bubble off"
+    val screen = if (state.permissions.screenReadingEnabled) {
+        "Screen reading on"
+    } else {
+        "Screen reading off"
+    }
+    return "$bubble · $screen"
 }
 
 private fun providersSubtitle(state: SettingsUiState): String = when {

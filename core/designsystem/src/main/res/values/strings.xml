@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      The screen-reading disclosure, held here rather than in :integration:entrypoints because
+      two places must show exactly this text: the system Accessibility screen (via the service's
+      android:description) and Settings > Entry points, which is where most users will actually
+      read it.
+
+      It lived in two places once and immediately drifted — the Settings copy went on claiming
+      reads happen only when a workflow runs, after the service had changed to snapshotting a
+      screen as it opens. A privacy disclosure that is merely out of date is still a false one,
+      so there is now one string and no way for them to disagree.
+
+      Keep it in step with ArcxAccessibilityService: Android only exposes the frontmost window,
+      so the service must read a screen as it opens, and this text has to say so.
+    -->
+    <string name="arcx_accessibility_description">Lets ArcX read the text on your screen so a workflow can act on whatever you are looking at — summarise an article, explain an error, reply to a message — without you selecting or copying anything first.\n\nAndroid only lets an app read the screen that is currently in front, and ArcX\'s own window covers yours while a workflow runs. So when you open a screen, ArcX reads its text once and keeps that copy in memory for two minutes, ready in case you start a workflow. It is never written to storage and never leaves your device on its own. Password fields are skipped, and ArcX does not follow along as you scroll or type.\n\nWhen you do run a workflow that uses the screen, that text is sent to the AI provider you configured in ArcX — so only enable this if you are comfortable with that provider seeing what is on screen.\n\nYou can turn this off here at any time; the copy in memory is dropped immediately. Every other part of ArcX keeps working without it.</string>
+
+</resources>

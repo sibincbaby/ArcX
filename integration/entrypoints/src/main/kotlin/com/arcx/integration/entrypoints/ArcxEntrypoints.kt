@@ -3,6 +3,7 @@ package com.arcx.integration.entrypoints
 import android.content.Context
 import android.content.Intent
 import androidx.glance.appwidget.updateAll
+import com.arcx.core.domain.capture.SystemSurfaces
 import com.arcx.integration.entrypoints.accessibility.ArcxAccessibility
 import com.arcx.integration.entrypoints.overlay.OverlayPermission
 import com.arcx.integration.entrypoints.overlay.OverlayService
@@ -21,17 +22,17 @@ import javax.inject.Singleton
 @Singleton
 class ArcxEntrypoints @Inject constructor(
     @ApplicationContext private val context: Context,
-) {
+) : SystemSurfaces {
 
     /** True when the user has switched ArcX on in Settings > Accessibility. */
-    fun isScreenReadingEnabled(): Boolean = ArcxAccessibility.isEnabled(context)
+    override fun isScreenReadingEnabled(): Boolean = ArcxAccessibility.isEnabled(context)
 
-    fun screenReadingSettingsIntent(): Intent = ArcxAccessibility.settingsIntent()
+    override fun screenReadingSettingsIntent(): Intent = ArcxAccessibility.settingsIntent()
 
     /** True when ArcX may draw over other apps, which the bubble cannot work without. */
-    fun isOverlayGranted(): Boolean = OverlayPermission.isGranted(context)
+    override fun isOverlayGranted(): Boolean = OverlayPermission.isGranted(context)
 
-    fun overlaySettingsIntent(): Intent = OverlayPermission.settingsIntent(context)
+    override fun overlaySettingsIntent(): Intent = OverlayPermission.settingsIntent(context)
 
     /**
      * Mirrors the bubble switch. The caller still owns persisting `UserSettings.bubbleEnabled` —
