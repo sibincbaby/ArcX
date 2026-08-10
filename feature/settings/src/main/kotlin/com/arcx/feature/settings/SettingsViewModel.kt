@@ -9,7 +9,10 @@ import com.arcx.core.domain.repository.ProviderRepository
 import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.domain.repository.WorkflowRepository
 import com.arcx.core.domain.usecase.ClearHistoryUseCase
+import com.arcx.core.domain.usecase.DeleteAllScreenshotsUseCase
+import com.arcx.core.domain.usecase.PurgeExpiredScreenshotsUseCase
 import com.arcx.core.model.ProviderConfig
+import com.arcx.core.model.ScreenshotRetention
 import com.arcx.core.model.ThemePreference
 import com.arcx.core.model.UserSettings
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -59,6 +62,8 @@ class SettingsViewModel @Inject constructor(
     private val history: HistoryRepository,
     private val settings: SettingsRepository,
     private val clearHistory: ClearHistoryUseCase,
+    private val deleteAllScreenshots: DeleteAllScreenshotsUseCase,
+    private val purgeExpiredScreenshots: PurgeExpiredScreenshotsUseCase,
     private val surfaces: SystemSurfaces,
 ) : ViewModel() {
 
@@ -129,6 +134,22 @@ class SettingsViewModel @Inject constructor(
     fun onHistoryEnabledChange(enabled: Boolean) = update { it.copy(historyEnabled = enabled) }
 
     fun onSetDefaultProvider(id: String) = update { it.copy(defaultProviderId = id) }
+
+    /**
+     * Sweeps immediately after writing the choice. Shortening the window is something a user
+     * does *because* they want the old images gone, and waiting for whenever the next scheduled
+     * sweep runs would make the setting look like it did nothing.
+     */
+    fun onScreenshotRetentionChange(retention: ScreenshotRetention) {
+        viewModelScope.launch {
+            settings.update { it.copy(screenshotRetention = retention) }
+            purgeExpiredScreenshots()
+        }
+    }
+
+    fun onDeleteScreenshots() {
+        viewModelScope.launch { deleteAllScreenshots() }
+    }
 
     fun onClearHistory() {
         viewModelScope.launch { clearHistory() }

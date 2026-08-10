@@ -53,6 +53,10 @@ sealed class AiError(message: String, cause: Throwable? = null) : Exception(mess
     class NoInput :
         AiError("This workflow needs some text to work on")
 
+    /** A screenshot workflow ran but no image could be captured. */
+    class NoScreenshot :
+        AiError("Could not capture the screen")
+
     class Unknown(cause: Throwable?) :
         AiError(cause?.message ?: "Something went wrong", cause)
 }

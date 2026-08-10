@@ -111,8 +111,11 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
 
         SettingsScreen.PRIVACY -> PrivacyScreen(
             historyEnabled = state.settings.historyEnabled,
+            screenshotRetention = state.settings.screenshotRetention,
             onBack = { screen = SettingsScreen.ROOT },
             onHistoryEnabledChange = viewModel::onHistoryEnabledChange,
+            onScreenshotRetentionChange = viewModel::onScreenshotRetentionChange,
+            onDeleteScreenshots = viewModel::onDeleteScreenshots,
             onClearHistory = viewModel::onClearHistory,
             onDeleteAllLocalData = viewModel::onDeleteAllLocalData,
         )

@@ -33,7 +33,7 @@ internal val InputSource.label: String
         InputSource.PDF -> "A PDF I pick"
         InputSource.CAMERA -> "A photo I take"
         InputSource.AUDIO -> "An audio clip"
-        InputSource.SCREENSHOT -> "A screenshot"
+        InputSource.SCREENSHOT -> "A picture of my screen"
         InputSource.NONE -> "Nothing — the prompt is enough"
     }
 
@@ -49,7 +49,8 @@ internal val InputSource.explanation: String
         InputSource.PDF -> "Pick a PDF and send its contents. Needs a model that reads documents."
         InputSource.CAMERA -> "Opens the camera so you can shoot what you want looked at."
         InputSource.AUDIO -> "Pick or record a clip to transcribe or summarise."
-        InputSource.SCREENSHOT -> "Captures the current screen as a picture rather than as text."
+        InputSource.SCREENSHOT ->
+            "Sends what you are looking at as an image. Needs screen reading turned on, and a model that can see."
         InputSource.NONE -> "No input at all — good for generators and daily prompts."
     }
 

@@ -4,6 +4,7 @@ import com.arcx.core.data.database.RunDao
 import com.arcx.core.data.database.WorkflowDao
 import com.arcx.core.data.mapper.toEntity
 import com.arcx.core.data.mapper.toModel
+import com.arcx.core.domain.capture.ScreenshotStore
 import com.arcx.core.domain.repository.HistoryRepository
 import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.model.RunRecord
@@ -15,6 +16,7 @@ internal class HistoryRepositoryImpl @Inject constructor(
     private val runDao: RunDao,
     private val workflowDao: WorkflowDao,
     private val settings: SettingsRepository,
+    private val screenshots: ScreenshotStore,
 ) : HistoryRepository {
 
     override fun observeAll(): Flow<List<RunRecord>> =
@@ -31,5 +33,13 @@ internal class HistoryRepositoryImpl @Inject constructor(
         if (settings.current().historyEnabled) runDao.insert(run.toEntity())
     }
 
-    override suspend fun clear() = runDao.clear()
+    /**
+     * The images go with the rows. Deleting only the rows would leave screenshots on disk that
+     * History can no longer show and that no button in the app can ever reach — the whole reason
+     * this wipes the directory rather than only the paths it knows about.
+     */
+    override suspend fun clear() {
+        runDao.clear()
+        screenshots.deleteAll()
+    }
 }

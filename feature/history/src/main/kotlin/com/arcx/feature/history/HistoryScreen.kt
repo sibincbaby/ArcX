@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material3.AlertDialog
@@ -228,6 +229,16 @@ private fun RunRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            // An icon, not a thumbnail: the list must never decode a screen capture per row.
+            if (run.screenshotPath != null) {
+                Icon(
+                    imageVector = Icons.Outlined.Image,
+                    contentDescription = "Ran on a screenshot",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(10.dp))
+            }
             StatusIcon(run.status)
         }
     }
@@ -282,6 +293,15 @@ private fun RunDetailSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            // Above the input preview because for these runs the picture *is* what was sent;
+            // the text below it is only the caption the runner recorded alongside it.
+            run.screenshotPath?.let { path ->
+                Spacer(Modifier.height(20.dp))
+                Text("Screenshot", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(6.dp))
+                RunScreenshot(path)
+            }
 
             Spacer(Modifier.height(20.dp))
             Text("Input", style = MaterialTheme.typography.titleSmall)

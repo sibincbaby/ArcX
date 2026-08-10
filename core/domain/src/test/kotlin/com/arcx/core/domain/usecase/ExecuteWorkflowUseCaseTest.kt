@@ -3,6 +3,8 @@ package com.arcx.core.domain.usecase
 import app.cash.turbine.test
 import com.arcx.core.domain.execution.ExecutionState
 import com.arcx.core.model.AiError
+import com.arcx.core.model.Attachment
+import com.arcx.core.model.InputSource
 import com.arcx.core.model.ProviderConfig
 import com.arcx.core.model.ProviderType
 import com.arcx.core.model.RunStatus
@@ -10,6 +12,7 @@ import com.arcx.core.model.UserSettings
 import com.arcx.core.model.Workflow
 import com.arcx.core.model.WorkflowInput
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -24,6 +27,14 @@ class ExecuteWorkflowUseCaseTest {
         name = "Summarise",
         prompt = "Summarise {{selected_text}} for {{current_app}}",
         systemPrompt = "You are terse. Screen says: {{screen_text}}",
+    )
+
+    /** A picture of the screen is the whole input: no text, nothing for the launch to carry. */
+    private val vision = Workflow(
+        id = "w2",
+        name = "Explain this screen",
+        input = InputSource.SCREENSHOT,
+        prompt = "What is on this screen?",
     )
 
     private val openAi = ProviderConfig(
@@ -45,6 +56,7 @@ class ExecuteWorkflowUseCaseTest {
         settings: FakeSettingsRepository = FakeSettingsRepository(),
         provider: FakeAiProvider? = FakeAiProvider(deltas = listOf("Hel", "lo!")),
         screen: FakeScreenContextProvider = FakeScreenContextProvider(available = true, text = "on screen"),
+        screenshots: FakeScreenshotStore = FakeScreenshotStore(),
         clipboard: FakeClipboard = FakeClipboard("clip"),
     ) = ExecuteWorkflowUseCase(
         workflows = workflows,
@@ -53,6 +65,7 @@ class ExecuteWorkflowUseCaseTest {
         settings = settings,
         registry = FakeRegistry(provider),
         screen = screen,
+        screenshots = screenshots,
         clipboard = clipboard,
         time = FakeTimeSource(),
     )
@@ -350,6 +363,110 @@ class ExecuteWorkflowUseCaseTest {
         assertFalse(prompt.contains("Summarise whatever is on screen"))
     }
 
+
+    @Test
+    fun `screenshot workflow sends the captured image and records where it was stored`() = runTest {
+        val history = FakeHistoryRepository()
+        val screenshots = FakeScreenshotStore()
+        val provider = FakeAiProvider(deltas = listOf("a cat"))
+        val jpeg = byteArrayOf(1, 2, 3)
+
+        useCase(
+            history = history,
+            provider = provider,
+            screen = FakeScreenContextProvider(canCapture = true, jpeg = jpeg),
+            screenshots = screenshots,
+        ).invoke(vision, WorkflowInput()).test {
+            assertEquals(ExecutionState.Preparing, awaitItem())
+            skipItems(1)
+            assertTrue(awaitItem() is ExecutionState.Success)
+            awaitComplete()
+        }
+
+        val attachment = provider.lastRequest!!.attachments.single()
+        assertEquals("image/jpeg", attachment.mimeType)
+        assertArrayEquals(jpeg, attachment.bytes)
+
+        val run = history.records.single()
+        assertEquals(screenshots.saved.keys.single(), run.id)
+        assertEquals("/data/screenshots/${run.id}.jpg", run.screenshotPath)
+    }
+
+    @Test
+    fun `no image available fails as NoScreenshot without calling the provider`() = runTest {
+        val history = FakeHistoryRepository()
+        val provider = FakeAiProvider(deltas = listOf("ok"))
+        val screenshots = FakeScreenshotStore()
+
+        useCase(
+            history = history,
+            provider = provider,
+            screen = FakeScreenContextProvider(canCapture = false, jpeg = byteArrayOf(1)),
+            screenshots = screenshots,
+        ).invoke(vision, WorkflowInput()).test {
+            assertEquals(ExecutionState.Preparing, awaitItem())
+            val state = awaitItem()
+            assertTrue(state is ExecutionState.Failed && state.error is AiError.NoScreenshot)
+            awaitComplete()
+        }
+
+        // The point of the guard: an imageless vision prompt must never cost an API call.
+        assertNull(provider.lastRequest)
+        assertTrue(screenshots.saved.isEmpty())
+        assertNull(history.records.single().screenshotPath)
+    }
+
+    // Seeing what a failed run acted on is most of the reason to keep the image at all.
+    @Test
+    fun `a failed screenshot run still keeps the image it acted on`() = runTest {
+        val history = FakeHistoryRepository()
+        val screenshots = FakeScreenshotStore()
+
+        useCase(
+            history = history,
+            provider = FakeAiProvider(error = AiError.RateLimited()),
+            screen = FakeScreenContextProvider(canCapture = true, jpeg = byteArrayOf(9)),
+            screenshots = screenshots,
+        ).invoke(vision, WorkflowInput()).test {
+            assertEquals(ExecutionState.Preparing, awaitItem())
+            assertTrue(awaitItem() is ExecutionState.Failed)
+            awaitComplete()
+        }
+
+        val run = history.records.single()
+        assertEquals(RunStatus.FAILED, run.status)
+        assertEquals("/data/screenshots/${run.id}.jpg", run.screenshotPath)
+    }
+
+    // A shared image is what the user chose to act on; the screen must not overrule it.
+    @Test
+    fun `a launch that brought its own attachment is not given a screenshot`() = runTest {
+        val provider = FakeAiProvider(deltas = listOf("ok"))
+        val shared = Attachment(mimeType = "image/png", bytes = byteArrayOf(7))
+
+        useCase(
+            provider = provider,
+            screen = FakeScreenContextProvider(canCapture = true, jpeg = byteArrayOf(1)),
+        ).invoke(vision, WorkflowInput(attachments = listOf(shared))).test {
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        assertEquals(listOf("image/png"), provider.lastRequest!!.attachments.map { it.mimeType })
+    }
+
+    // History off means nothing is written down — including bytes far more sensitive than a row.
+    @Test
+    fun `history disabled stores no screenshot`() = runTest {
+        val screenshots = FakeScreenshotStore()
+
+        useCase(
+            settings = FakeSettingsRepository(UserSettings(historyEnabled = false)),
+            screen = FakeScreenContextProvider(canCapture = true, jpeg = byteArrayOf(1)),
+            screenshots = screenshots,
+        ).invoke(vision, WorkflowInput()).test { cancelAndIgnoreRemainingEvents() }
+
+        assertTrue(screenshots.saved.isEmpty())
+    }
 
     // History must show what was actually sent, not the empty WorkflowInput a bubble launch carries.
     @Test

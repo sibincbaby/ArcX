@@ -93,6 +93,15 @@ class OverlayService : Service() {
             onWorkflow = { workflow -> launchDeepLink(workflow.id) },
             onMore = { launchDeepLink(workflowId = null) },
             onExpanded = ::captureOnExpand,
+            canCaptureImage = {
+                AccessibilityServiceHolder.current()?.canCaptureScreenImageNow() == true
+            },
+            captureImage = { onGrabbed ->
+                // Null between the availability check and here only if the user switched the
+                // service off in that instant; the bubble still has to be let go of.
+                val service = AccessibilityServiceHolder.current()
+                if (service == null) onGrabbed() else service.captureScreenImage(onGrabbed)
+            },
         )
         if (!bubble.show()) {
             stopSelf()
@@ -120,13 +129,16 @@ class OverlayService : Service() {
     }
 
     /**
-     * Reads the screen the moment the panel opens, and takes its time about it.
+     * Reads the screen the moment the tap resolves, and takes its time about it.
      *
      * This is the free capture. The user is now looking at a list of workflows deciding which one
      * to tap, which is a second or more of slack, and the app underneath is still the top task so
      * it is still readable. Stabilising here costs the user nothing, and it is what covers a page
      * whose accessibility tree is still filling in — Chrome publishes web content roughly 1.3s
      * after a page opens, so a bubble tapped quickly would otherwise capture only the toolbar.
+     *
+     * Runs alongside the pixel capture the bubble is doing at the same moment, not after it: the
+     * two share nothing but the moment, and a tree walk is unaffected by what happens to be drawn.
      */
     private fun captureOnExpand() {
         scope.launch(Dispatchers.IO) {

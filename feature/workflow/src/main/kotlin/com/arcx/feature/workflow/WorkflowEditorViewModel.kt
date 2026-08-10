@@ -64,6 +64,20 @@ internal data class WorkflowEditorState(
 )
 
 /**
+ * Display name of the chosen model when the catalogue says outright that it cannot accept
+ * images, and the workflow is about to send it one. Null whenever we do not actually know —
+ * an unfetched list, a provider without a catalogue, or the provider's own default model —
+ * because a warning under a model that works fine is worse than no warning at all.
+ */
+internal val WorkflowEditorState.modelWithoutVision: String?
+    get() {
+        if (input != InputSource.SCREENSHOT) return null
+        val loaded = models as? ModelListState.Loaded ?: return null
+        val chosen = loaded.models.firstOrNull { it.id == model } ?: return null
+        return if (chosen.supportsVision) null else chosen.displayName
+    }
+
+/**
  * Form fields only. Dirty tracking compares this rather than the whole UI state, which also
  * carries the provider list, the model list and validation flags — none of which the user
  * changed.

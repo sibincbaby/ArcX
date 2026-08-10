@@ -285,6 +285,15 @@ private fun WorkflowEditorScreen(
                 modifier = Modifier.fieldPadding(),
             )
 
+            state.modelWithoutVision?.let { name ->
+                Spacer(Modifier.height(8.dp))
+                EditorWarning(
+                    "$name cannot look at images, so this workflow will send it a screenshot " +
+                        "it can never read. Pick a model with vision when you have one — " +
+                        "saving works either way.",
+                )
+            }
+
             Spacer(Modifier.height(12.dp))
 
             FormDropdown(
@@ -374,28 +383,42 @@ private fun VariableChips(onInsert: (PromptVariable) -> Unit) {
 @Composable
 private fun PromptVariableSummary(prompt: String, input: InputSource) {
     val used = remember(prompt) { PromptTemplate.variablesIn(prompt) }
-    val needsInput = input != InputSource.MANUAL && input != InputSource.NONE
+    // Attachment inputs ride alongside the prompt as image or file parts rather than being
+    // substituted into it, so a prompt with no placeholder is correct for them — telling
+    // someone to add {{input}} to a screenshot workflow would be advice that breaks it.
+    val needsInput = input !in INPUTS_WITHOUT_PLACEHOLDER
 
     when {
-        used.isEmpty() && needsInput && prompt.isNotBlank() -> Surface(
-            color = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-            shape = RoundedCornerShape(20.dp),
-            modifier = Modifier.fieldPadding(),
-        ) {
-            Text(
-                text = "This prompt never mentions the input. Add {{input}} where the " +
-                    "${input.label.lowercase()} should go, or the AI will answer without it.",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(14.dp),
-            )
-        }
+        used.isEmpty() && needsInput && prompt.isNotBlank() -> EditorWarning(
+            "This prompt never mentions the input. Add {{input}} where the " +
+                "${input.label.lowercase()} should go, or the AI will answer without it.",
+        )
 
         used.isNotEmpty() -> Text(
             text = "Uses ${used.joinToString { "{{$it}}" }}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+    }
+}
+
+/**
+ * Advice, never a gate. Everything the builder can get wrong is still savable — a half-right
+ * workflow the user can come back and fix beats a form that refuses to close.
+ */
+@Composable
+private fun EditorWarning(text: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fieldPadding(),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(14.dp),
         )
     }
 }
@@ -540,3 +563,18 @@ private fun AdvancedSection(
 private fun Modifier.fieldPadding(): Modifier = this
     .fillMaxWidth()
     .padding(horizontal = 16.dp)
+
+/**
+ * Inputs the model receives as a separate part — an image, a document, audio — plus the two that
+ * carry no content of their own. None of them belong in the prompt text.
+ */
+private val INPUTS_WITHOUT_PLACEHOLDER = setOf(
+    InputSource.MANUAL,
+    InputSource.NONE,
+    InputSource.SCREENSHOT,
+    InputSource.IMAGE,
+    InputSource.PDF,
+    InputSource.CAMERA,
+    InputSource.AUDIO,
+)
+

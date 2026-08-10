@@ -84,6 +84,7 @@ fun RunEntity.toModel(): RunRecord = RunRecord(
     inputPreview = inputPreview,
     outputPreview = outputPreview,
     error = error,
+    screenshotPath = screenshotPath,
 )
 
 /** Previews are clamped on the way in: a run's full payload must never reach the database. */
@@ -100,4 +101,6 @@ fun RunRecord.toEntity(): RunEntity = RunEntity(
     inputPreview = inputPreview.take(RunRecord.PREVIEW_LIMIT),
     outputPreview = outputPreview?.take(RunRecord.PREVIEW_LIMIT),
     error = error?.take(RunRecord.PREVIEW_LIMIT),
+    // A path, never the image itself: the bytes stay on disk where deleting a run can reach them.
+    screenshotPath = screenshotPath,
 )

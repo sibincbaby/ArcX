@@ -20,6 +20,11 @@ data class RunRecord(
     val inputPreview: String,
     val outputPreview: String? = null,
     val error: String? = null,
+    /**
+     * Absolute path to the JPEG this run was given, for screenshot workflows. Lives in app-internal
+     * storage, is excluded from backup, and is deleted with the run — see [ScreenshotRetention].
+     */
+    val screenshotPath: String? = null,
 ) {
     companion object {
         /** History is a convenience, not an archive; keep rows small. */

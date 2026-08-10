@@ -5,6 +5,7 @@ import com.arcx.core.domain.ai.AiProvider
 import com.arcx.core.domain.ai.AiProviderRegistry
 import com.arcx.core.domain.capture.ClipboardAccess
 import com.arcx.core.domain.capture.ScreenContextProvider
+import com.arcx.core.domain.capture.ScreenshotStore
 import com.arcx.core.domain.repository.HistoryRepository
 import com.arcx.core.domain.repository.ProviderRepository
 import com.arcx.core.domain.repository.SettingsRepository
@@ -134,11 +135,42 @@ class FakeScreenContextProvider(
     var available: Boolean = true,
     var text: String? = null,
     var packageName: String? = null,
+    /** Capture is a separate permission from screen reading, so it toggles separately. */
+    var canCapture: Boolean = false,
+    var jpeg: ByteArray? = null,
 ) : ScreenContextProvider {
     override fun isAvailable(): Boolean = available
     override suspend fun screenText(): String? = if (available) text else null
+    override fun canScreenshot(): Boolean = canCapture
+    override suspend fun screenshot(): ByteArray? = if (canCapture) jpeg else null
     override fun currentPackage(): String? = if (available) packageName else null
     override suspend fun replaceFocusedText(text: String): Boolean = false
+}
+
+/** Records what was stored and removed instead of touching a filesystem. */
+class FakeScreenshotStore : ScreenshotStore {
+    val saved = mutableMapOf<String, ByteArray>()
+    val deleted = mutableListOf<String>()
+    var clearedAll = false
+    var purgedBefore: Long? = null
+
+    override suspend fun save(runId: String, jpeg: ByteArray): String? {
+        saved[runId] = jpeg
+        return "/data/screenshots/$runId.jpg"
+    }
+
+    override suspend fun delete(paths: List<String>) {
+        deleted += paths
+    }
+
+    override suspend fun deleteAll() {
+        clearedAll = true
+        saved.clear()
+    }
+
+    override suspend fun purgeOlderThan(cutoffMillis: Long) {
+        purgedBefore = cutoffMillis
+    }
 }
 
 class FakeClipboard(var contents: String? = null) : ClipboardAccess {

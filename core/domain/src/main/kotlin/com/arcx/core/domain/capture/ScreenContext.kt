@@ -13,6 +13,18 @@ interface ScreenContextProvider {
     /** Visible text of the foreground window, or null when unavailable. */
     suspend fun screenText(): String?
 
+    /** True when this device and permission state allow pixel capture at all. */
+    fun canScreenshot(): Boolean
+
+    /**
+     * JPEG of the user's screen for vision workflows, or null when unavailable.
+     *
+     * Like [screenText] this returns the most recent capture rather than taking one now: ArcX's
+     * own window covers the user's screen by the time a workflow runs, so the frame has to have
+     * been taken at the moment the user chose the workflow, before anything of ours was drawn.
+     */
+    suspend fun screenshot(): ByteArray?
+
     /** Package name of the foreground app, or null when unavailable. */
     fun currentPackage(): String?
 

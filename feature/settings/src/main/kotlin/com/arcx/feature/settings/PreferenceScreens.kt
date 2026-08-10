@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Screenshot
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.arcx.core.designsystem.component.SectionHeader
+import com.arcx.core.model.ScreenshotRetention
 import com.arcx.core.model.ThemePreference
 import com.arcx.core.model.UserSettings
 
@@ -84,13 +86,17 @@ internal fun AppearanceScreen(
 @Composable
 internal fun PrivacyScreen(
     historyEnabled: Boolean,
+    screenshotRetention: ScreenshotRetention,
     onBack: () -> Unit,
     onHistoryEnabledChange: (Boolean) -> Unit,
+    onScreenshotRetentionChange: (ScreenshotRetention) -> Unit,
+    onDeleteScreenshots: () -> Unit,
     onClearHistory: () -> Unit,
     onDeleteAllLocalData: () -> Unit,
 ) {
     var confirmClear by remember { mutableStateOf(false) }
     var confirmWipe by remember { mutableStateOf(false) }
+    var confirmDeleteScreenshots by remember { mutableStateOf(false) }
 
     SettingsScaffold(title = "Privacy", onBack = onBack) { padding ->
         Column(
@@ -113,6 +119,38 @@ internal fun PrivacyScreen(
                     onClick = { confirmClear = true },
                 )
             }
+
+            SectionHeader("Screenshots")
+            SettingsGroup {
+                ScreenshotRetention.entries.forEach { retention ->
+                    SettingsRow(
+                        title = retentionLabel(retention),
+                        onClick = { onScreenshotRetentionChange(retention) },
+                        trailing = {
+                            RadioButton(
+                                selected = screenshotRetention == retention,
+                                onClick = { onScreenshotRetentionChange(retention) },
+                            )
+                        },
+                    )
+                }
+            }
+            SettingsNote(retentionNote(screenshotRetention))
+            // Its own group: inside the retention one it would read as a fourth way to keep
+            // screenshots rather than the one control that throws them away.
+            SettingsGroup {
+                SettingsRow(
+                    title = "Delete screenshots now",
+                    subtitle = "Remove every saved screenshot, whatever its age.",
+                    icon = Icons.Outlined.Screenshot,
+                    onClick = { confirmDeleteScreenshots = true },
+                )
+            }
+            SettingsNote(
+                "Workflows that act on your screen save a picture of it here so History can " +
+                    "show you what they were given. Those pictures are the only screen " +
+                    "contents ArcX ever writes to storage.",
+            )
 
             SectionHeader("Danger zone")
             SettingsGroup {
@@ -140,6 +178,17 @@ internal fun PrivacyScreen(
             confirmLabel = "Clear",
             onConfirm = onClearHistory,
             onDismiss = { confirmClear = false },
+        )
+    }
+
+    if (confirmDeleteScreenshots) {
+        ConfirmDialog(
+            title = "Delete screenshots?",
+            body = "Every screenshot ArcX has saved is removed from this device. The runs stay " +
+                "in History, they just stop showing a picture.",
+            confirmLabel = "Delete",
+            onConfirm = onDeleteScreenshots,
+            onDismiss = { confirmDeleteScreenshots = false },
         )
     }
 
@@ -206,6 +255,22 @@ internal fun AboutScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+private fun retentionLabel(retention: ScreenshotRetention): String = when (retention) {
+    ScreenshotRetention.WEEK -> "Keep for a week"
+    ScreenshotRetention.MONTH -> "Keep for a month"
+    ScreenshotRetention.FOREVER -> "Keep until I delete them"
+}
+
+/**
+ * Said next to the choice rather than once above it, because "older than this are deleted" is
+ * a promise the FOREVER option does not make and must not appear to.
+ */
+private fun retentionNote(retention: ScreenshotRetention): String = when (retention) {
+    ScreenshotRetention.FOREVER ->
+        "Screenshots are kept until you delete them here or clear your history."
+    else -> "Screenshots older than this are deleted automatically."
 }
 
 @Composable

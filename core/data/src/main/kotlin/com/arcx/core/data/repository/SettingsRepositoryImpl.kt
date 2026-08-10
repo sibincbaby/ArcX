@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.arcx.core.data.di.SettingsDataStore
 import com.arcx.core.domain.repository.SettingsRepository
+import com.arcx.core.model.ScreenshotRetention
 import com.arcx.core.model.ThemePreference
 import com.arcx.core.model.UserSettings
 import kotlinx.coroutines.flow.Flow
@@ -37,6 +38,7 @@ internal class SettingsRepositoryImpl @Inject constructor(
             prefs[Keys.HISTORY_ENABLED] = updated.historyEnabled
             prefs[Keys.HAS_ONBOARDED] = updated.hasOnboarded
             prefs[Keys.BUBBLE_ENABLED] = updated.bubbleEnabled
+            prefs[Keys.SCREENSHOT_RETENTION] = updated.screenshotRetention.name
             val defaultProvider = updated.defaultProviderId
             if (defaultProvider == null) prefs.remove(Keys.DEFAULT_PROVIDER_ID)
             else prefs[Keys.DEFAULT_PROVIDER_ID] = defaultProvider
@@ -53,6 +55,11 @@ internal class SettingsRepositoryImpl @Inject constructor(
             hasOnboarded = this[Keys.HAS_ONBOARDED] ?: defaults.hasOnboarded,
             defaultProviderId = this[Keys.DEFAULT_PROVIDER_ID],
             bubbleEnabled = this[Keys.BUBBLE_ENABLED] ?: defaults.bubbleEnabled,
+            // An unreadable value falls back to the default rather than to FOREVER: the safe
+            // reading of a broken preference is "expire these", not "keep them all".
+            screenshotRetention = this[Keys.SCREENSHOT_RETENTION]
+                ?.let { runCatching { enumValueOf<ScreenshotRetention>(it) }.getOrNull() }
+                ?: defaults.screenshotRetention,
         )
     }
 
@@ -63,5 +70,6 @@ internal class SettingsRepositoryImpl @Inject constructor(
         val HAS_ONBOARDED = booleanPreferencesKey("has_onboarded")
         val DEFAULT_PROVIDER_ID = stringPreferencesKey("default_provider_id")
         val BUBBLE_ENABLED = booleanPreferencesKey("bubble_enabled")
+        val SCREENSHOT_RETENTION = stringPreferencesKey("screenshot_retention")
     }
 }

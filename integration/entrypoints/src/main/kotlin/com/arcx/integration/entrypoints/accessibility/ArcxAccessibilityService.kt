@@ -1,18 +1,30 @@
 package com.arcx.integration.entrypoints.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
+import android.graphics.Bitmap
+import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import androidx.annotation.RequiresApi
+import androidx.core.graphics.scale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.ByteArrayOutputStream
+import kotlin.math.roundToInt
 
 /** Past this the prompt costs more than the answer is worth, and long feeds are mostly chrome. */
 private const val MAX_SCREEN_TEXT = 8_000
@@ -53,6 +65,27 @@ private const val STABILISE_STEP_MS = 100L
 private const val SAME_SCREEN_WINDOW_MS = 8_000L
 
 /**
+ * Long edge of the kept frame, in pixels.
+ *
+ * This device captures at 1080x2400, and that bitmap is ~10MB raw. The frame is base64'd into a
+ * prompt and written to disk for history, so the native resolution is paid for three times over for
+ * detail a vision model does not use — 1568 is the point past which Gemini's image tiling stops
+ * resolving anything new, and it still leaves screen text comfortably legible.
+ */
+private const val MAX_SCREENSHOT_EDGE = 1568
+
+/** Screens are flat colour and glyph edges; 80 is where JPEG stops visibly smearing the text. */
+private const val SCREENSHOT_JPEG_QUALITY = 80
+
+/**
+ * The platform refuses captures taken too close together with
+ * `ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT`. That refusal is handled, so this interval is not
+ * about avoiding the error — it is about not hiding the bubble and stalling the panel for a request
+ * that was going to be refused anyway. A frame under a second old is of the same screen regardless.
+ */
+private const val SCREENSHOT_MIN_INTERVAL_MS = 1_000L
+
+/**
  * Backs [com.arcx.core.domain.capture.ScreenContextProvider].
  *
  * ## Why this is not purely on-demand
@@ -87,6 +120,23 @@ private const val SAME_SCREEN_WINDOW_MS = 8_000L
  * The costs are worth naming, and the user-facing description in `:core:designsystem` names them:
  * a snapshot is what the user opened rather than what they have since scrolled to, and it lives in
  * memory for [SNAPSHOT_TTL_MS].
+ *
+ * ## The image path is not the text path
+ *
+ * Vision workflows need pixels, and [captureScreenImage] gets them from
+ * [AccessibilityService.takeScreenshot] rather than MediaProjection so that firing one stays a
+ * single tap with no system consent dialog. The two paths look alike — capture early, keep it
+ * briefly, serve it later — but the image one is far more constrained:
+ *
+ *  - it needs API 30, whereas text works back to ArcX's minSdk of 26;
+ *  - the platform rate-limits it to roughly one capture a second;
+ *  - it captures the *composited display*, so unlike a tree walk it cannot filter ArcX out. There
+ *    is no window to skip: whatever is drawn is in the picture. Only the caller can fix that, by
+ *    not drawing, which is why the grab is driven from the bubble rather than from here.
+ *
+ * Because of that last point there is exactly one moment a usable frame exists — the tap that
+ * opens the panel, with the handle hidden — so unlike text there is no speculative snapshot on
+ * window changes and no second capture at pick time.
  */
 class ArcxAccessibilityService : AccessibilityService() {
 
@@ -107,8 +157,17 @@ class ArcxAccessibilityService : AccessibilityService() {
     @Volatile
     private var lastSnapshotAt = 0L
 
+    @Volatile
+    private var frame: ScreenFrame? = null
+
+    @Volatile
+    private var lastScreenshotAt = 0L
+
     /** Tree walks are binder-heavy, so they never run on the thread delivering events. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** A frame grab releases the caller's hidden UI, so its callback has to land on the main thread. */
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -158,6 +217,7 @@ class ArcxAccessibilityService : AccessibilityService() {
         AccessibilityServiceHolder.detach(this)
         // Nothing the user looked at outlives the service being switched off.
         snapshot = null
+        frame = null
         scope.cancel()
     }
 
@@ -243,6 +303,122 @@ class ArcxAccessibilityService : AccessibilityService() {
 
     /** Package of the window the last snapshot came from, for `{{current_app}}`. */
     fun snapshotPackage(): String? = snapshot?.packageName
+
+    /**
+     * Whether pixel capture is possible at all.
+     *
+     * The capability is read back from [getServiceInfo] rather than assumed from
+     * `android:canTakeScreenshot` in the service config: asking for it and having been granted it
+     * are different things, and a user on Android 10 has a perfectly valid accessibility service
+     * that can never do this. `serviceInfo` is null before the system has configured the service
+     * and throws once it has been unbound, so both collapse into the same "no".
+     */
+    fun canScreenshot(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        val capabilities = runCatching { serviceInfo?.capabilities }.getOrNull() ?: return false
+        return capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT != 0
+    }
+
+    /**
+     * Whether a capture is worth the caller hiding its own UI for. Distinct from [canScreenshot]:
+     * this also answers no while the platform's capture interval has not elapsed, so a second tap
+     * in quick succession does not blank the bubble and delay the panel to earn a refusal.
+     */
+    fun canCaptureScreenImageNow(): Boolean = canScreenshot() &&
+        SystemClock.elapsedRealtime() - lastScreenshotAt >= SCREENSHOT_MIN_INTERVAL_MS
+
+    /**
+     * Grabs the composited display and keeps it as JPEG, replacing any older frame.
+     *
+     * [onGrabbed] is posted to the main thread as soon as the pixels are off the display — not when
+     * the JPEG is ready. The caller is holding its own UI off screen for the duration of the grab,
+     * so the two have to be decoupled: the copy, downscale and encode that follow are tens of
+     * milliseconds that nobody is waiting on, and running the panel behind them would be visible.
+     *
+     * It fires exactly once on every path, including the paths that give up, because a caller that
+     * never hears back stays hidden forever.
+     */
+    fun captureScreenImage(onGrabbed: () -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !canScreenshot()) {
+            mainHandler.post(onGrabbed)
+            return
+        }
+        lastScreenshotAt = SystemClock.elapsedRealtime()
+
+        val started = runCatching {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                // The callback arrives on this executor, and everything it does is CPU-bound work
+                // on a bitmap, so it is handed straight to the pool that already exists rather
+                // than to a thread of its own.
+                Dispatchers.IO.asExecutor(),
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        mainHandler.post(onGrabbed)
+                        keepFrame(screenshot)
+                    }
+
+                    /**
+                     * Every failure means the same thing here: keep whatever frame is already held.
+                     * `ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT` is the common one and is not an
+                     * error at all — the previous frame is at most a second old. A secure window
+                     * (banking, DRM) refuses outright on API 34+, and that is the platform doing
+                     * exactly what it should.
+                     */
+                    override fun onFailure(errorCode: Int) {
+                        mainHandler.post(onGrabbed)
+                    }
+                },
+            )
+            true
+        }.getOrDefault(false)
+
+        if (!started) mainHandler.post(onGrabbed)
+    }
+
+    /**
+     * The most recent frame, or null once it is older than [SNAPSHOT_TTL_MS] — the same TTL as the
+     * text snapshot, with more at stake, since this is a picture of everything that happened to be
+     * on screen rather than a summary of it.
+     */
+    fun latestScreenImage(): ByteArray? = frame
+        ?.takeIf { SystemClock.elapsedRealtime() - it.takenAt < SNAPSHOT_TTL_MS }
+        ?.jpeg
+
+    /**
+     * Turns a [ScreenshotResult] into the JPEG that is kept. Runs on the screenshot executor.
+     *
+     * The [android.hardware.HardwareBuffer] is a graphics allocation whose ownership the platform
+     * hands over, and closing it is not tidiness: a leaked one is several megabytes of memory the
+     * JVM heap has no idea about, so nothing will ever collect it, on every single capture. Hence
+     * the `finally` — the wrap, the copy and the encode below all have their own ways to fail.
+     *
+     * The copy out of the buffer is unavoidable. `wrapHardwareBuffer` yields a `Config.HARDWARE`
+     * bitmap, which cannot be read back or drawn onto a software canvas, so nothing can be scaled
+     * or compressed until the pixels are in the heap.
+     */
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun keepFrame(screenshot: ScreenshotResult) {
+        val buffer = screenshot.hardwareBuffer
+        val jpeg = try {
+            val wrapped = runCatching {
+                Bitmap.wrapHardwareBuffer(buffer, screenshot.colorSpace)
+            }.getOrNull()
+            val software = wrapped
+                ?.runCatching { copy(Bitmap.Config.ARGB_8888, false) }
+                ?.getOrNull()
+            wrapped?.recycle()
+            software?.let { encodeFrame(it) }
+        } finally {
+            buffer.close()
+        }
+
+        if (jpeg == null) return
+        frame = ScreenFrame(jpeg = jpeg, takenAt = SystemClock.elapsedRealtime())
+        // Encoding takes long enough that the user can have switched the service off underneath
+        // it, and the teardown that cleared `frame` would then have run before this wrote to it.
+        if (!scope.isActive) frame = null
+    }
 
     private fun readForegroundWindow(): ScreenSnapshot? {
         val root = topApplicationWindowRoot() ?: return null
@@ -340,6 +516,49 @@ private class ScreenSnapshot(
     val packageName: String?,
     val takenAt: Long,
 )
+
+/** The same idea as [ScreenSnapshot], in pixels. Never written to disk from here. */
+private class ScreenFrame(
+    val jpeg: ByteArray,
+    val takenAt: Long,
+)
+
+/**
+ * Downscales to [MAX_SCREENSHOT_EDGE] and JPEG-encodes, recycling [source] and anything it makes
+ * along the way. Returns null if the encoder refuses.
+ *
+ * Call this off the main thread. Scaling a full-screen bitmap and compressing it are each tens of
+ * milliseconds of pure CPU — several dropped frames if it ran while the bubble's panel was opening.
+ */
+private fun encodeFrame(source: Bitmap): ByteArray? {
+    val longEdge = maxOf(source.width, source.height)
+    val scaled = if (longEdge <= MAX_SCREENSHOT_EDGE) {
+        source
+    } else {
+        val ratio = MAX_SCREENSHOT_EDGE.toDouble() / longEdge
+        runCatching {
+            source.scale(
+                (source.width * ratio).roundToInt().coerceAtLeast(1),
+                (source.height * ratio).roundToInt().coerceAtLeast(1),
+                // Filtered: nearest-neighbour on a downscale this large turns body text into
+                // speckle, and text is most of what a vision workflow is asked to read.
+                filter = true,
+            )
+        }.getOrNull() ?: source
+    }
+
+    val stream = ByteArrayOutputStream(DEFAULT_JPEG_BUFFER)
+    val encoded = runCatching {
+        scaled.compress(Bitmap.CompressFormat.JPEG, SCREENSHOT_JPEG_QUALITY, stream)
+    }.getOrDefault(false)
+
+    if (scaled !== source) scaled.recycle()
+    source.recycle()
+    return if (encoded) stream.toByteArray() else null
+}
+
+/** Roughly what a 1568px-long-edge screen encodes to, so the stream almost never has to regrow. */
+private const val DEFAULT_JPEG_BUFFER = 256 * 1024
 
 /**
  * Joins node text into one newline-separated block, dropping consecutive repeats and stopping hard

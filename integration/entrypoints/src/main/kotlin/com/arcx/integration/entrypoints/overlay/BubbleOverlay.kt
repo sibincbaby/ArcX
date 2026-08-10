@@ -28,6 +28,21 @@ import kotlin.math.roundToInt
 private const val SNAP_DURATION_MS = 180L
 
 /**
+ * How long SurfaceFlinger is given to get the bubble-less frame onto the display after the view
+ * hierarchy has handed it over. One frame at 60Hz, and the display is the only party left that has
+ * not confirmed anything — `registerFrameCommitCallback` says the frame reached the compositor, not
+ * that it was composited.
+ */
+private const val COMPOSITE_SETTLE_MS = 16L
+
+/**
+ * Ceiling on how long the panel is held back waiting for a frame grab. Nothing should get close to
+ * it — a grab is tens of milliseconds — but a callback that never arrives would otherwise leave the
+ * bubble invisible and the panel unopened, which is the one failure the user cannot recover from.
+ */
+private const val FRAME_GRAB_TIMEOUT_MS = 500L
+
+/**
  * The floating bubble: one overlay window that is a small circle most of the time and the whole
  * screen while its panel is open.
  *
@@ -39,8 +54,20 @@ internal class BubbleOverlay(
     private val context: Context,
     private val onWorkflow: (Workflow) -> Unit,
     private val onMore: () -> Unit,
-    /** Fired the instant the panel opens — the last moment the app underneath is still readable. */
+    /** Fired the instant the tap resolves — the last moment the app underneath is still readable. */
     private val onExpanded: () -> Unit = {},
+    /**
+     * Whether a pixel capture is worth blanking the bubble and delaying the panel for. Answers no
+     * on old platforms, without the accessibility service, and while the platform's capture
+     * interval has not elapsed.
+     */
+    private val canCaptureImage: () -> Boolean = { false },
+    /**
+     * Grabs a frame of the screen. The callback lands on the main thread once the pixels are off
+     * the display, which is the moment the bubble may be drawn again — not when the image has
+     * finished encoding.
+     */
+    private val captureImage: (onGrabbed: () -> Unit) -> Unit = { it() },
 ) {
 
     private val windowManager = context.getSystemService(WindowManager::class.java)
@@ -48,6 +75,9 @@ internal class BubbleOverlay(
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     private var view: GestureHost? = null
+
+    /** Held separately from [view] because the frame grab hides the drawn content, not the window. */
+    private var content: View? = null
 
     /**
      * Owns the collapsed bubble's tap and drag.
@@ -74,6 +104,9 @@ internal class BubbleOverlay(
 
     private var expanded by mutableStateOf(false)
     private var workflows by mutableStateOf(emptyList<Workflow>())
+
+    /** True from the tap until the panel actually opens, while a frame grab is in flight. */
+    private var expanding = false
 
     /** Where the bubble sits when collapsed; preserved across expand/collapse. */
     private var collapsedX = 0
@@ -168,6 +201,7 @@ internal class BubbleOverlay(
         return runCatching {
             windowManager.addView(gestureHost, params)
             view = gestureHost
+            content = composeView
             host.resume()
             true
         }.getOrDefault(false)
@@ -180,6 +214,7 @@ internal class BubbleOverlay(
             runCatching { windowManager.removeView(attached) }
         }
         view = null
+        content = null
         // Order matters the other way round from what you would expect: DisposeOnViewTreeLifecycle-
         // Destroyed deliberately survives a detach, so removing the view does not end the
         // composition. Moving the host to DESTROYED is what actually releases it.
@@ -239,9 +274,65 @@ internal class BubbleOverlay(
         }
     }
 
+    /**
+     * The tap has resolved and the panel is about to open. Everything that needs the user's app to
+     * still be the only thing on screen happens here, in the gap before it does.
+     */
     private fun expand() {
+        if (expanding || expanded) return
+        expanding = true
         collapsedX = params.x
         collapsedY = params.y
+        // Fired before the frame grab rather than after it: the text read wants the earliest moment
+        // it can get and does not care what is drawn, so it must not inherit the grab's delay.
+        onExpanded()
+        if (!grabFrameThenOpen()) openPanel()
+    }
+
+    /**
+     * Blanks the bubble, has a frame of the screen taken, then opens the panel. Returns false when
+     * there is nothing to take, in which case the caller opens the panel with no delay at all.
+     *
+     * This is the only moment in ArcX's life when a usable frame exists. `takeScreenshot` captures
+     * the composited display, so unlike an accessibility tree walk it cannot be asked to leave ArcX
+     * out — whatever is drawn is in the picture. A moment later the panel covers the very screen the
+     * workflow is about to be asked about, and right now the handle is sitting on top of it. So the
+     * content is hidden for the length of the grab and the panel is held back until it is over.
+     *
+     * Hiding the ComposeView rather than the window is deliberate: the window and its surface stay
+     * alive and only the content stops being drawn, which is one draw pass. Taking the window down
+     * instead means a surface teardown and a fresh one on the way back, which is both slower and
+     * visible.
+     */
+    private fun grabFrameThenOpen(): Boolean {
+        val drawn = content ?: return false
+        // Redundant with canCaptureImage, which cannot be true below R — but stated here so the
+        // API-29 frame callback below is guarded by something the compiler can see.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        if (!canCaptureImage()) return false
+
+        drawn.visibility = View.INVISIBLE
+
+        var released = false
+        val release = Runnable {
+            if (released) return@Runnable
+            released = true
+            drawn.visibility = View.VISIBLE
+            openPanel()
+        }
+        drawn.postDelayed(release, FRAME_GRAB_TIMEOUT_MS)
+
+        // registerFrameCommitCallback is the only public signal that a specific frame has left the
+        // view hierarchy; polling with a fixed delay instead would be either a guess that shows the
+        // handle in the picture or a guess that makes the panel feel slow.
+        drawn.viewTreeObserver.registerFrameCommitCallback {
+            drawn.postDelayed({ captureImage { release.run() } }, COMPOSITE_SETTLE_MS)
+        }
+        return true
+    }
+
+    private fun openPanel() {
+        expanding = false
         expanded = true
         params.width = WindowManager.LayoutParams.MATCH_PARENT
         params.height = WindowManager.LayoutParams.MATCH_PARENT
@@ -249,7 +340,6 @@ internal class BubbleOverlay(
         params.y = 0
         params.flags = EXPANDED_FLAGS
         applyLayout()
-        onExpanded()
     }
 
     private fun collapse() {

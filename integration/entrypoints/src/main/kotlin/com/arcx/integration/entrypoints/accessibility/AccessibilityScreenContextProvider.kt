@@ -37,6 +37,22 @@ internal class AccessibilityScreenContextProvider @Inject constructor(
         AccessibilityServiceHolder.current()?.readScreenText()
     }
 
+    /**
+     * False on anything below Android 11, which is where `takeScreenshot` arrived, and false
+     * whenever the capability has not actually been granted. Callers use this to decide whether to
+     * offer a vision workflow at all, so it must not be optimistic.
+     */
+    override fun canScreenshot(): Boolean =
+        AccessibilityServiceHolder.current()?.canScreenshot() == true
+
+    /**
+     * Unlike [screenText] this is a volatile field read: no binder traffic, no decoding, nothing
+     * worth a dispatcher hop. The expensive half — the grab and the encode — already happened, back
+     * when the bubble had itself hidden and the user's app was still the only thing on screen.
+     */
+    override suspend fun screenshot(): ByteArray? =
+        AccessibilityServiceHolder.current()?.latestScreenImage()
+
     override suspend fun replaceFocusedText(text: String): Boolean = withContext(io) {
         AccessibilityServiceHolder.current()?.setFocusedText(text) ?: false
     }

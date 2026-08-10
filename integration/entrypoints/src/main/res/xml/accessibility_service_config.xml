@@ -13,11 +13,18 @@
   service tells the user's app apart from ArcX's own window and from system UI. Note that it does
   not widen this as far as you would hope: Android exposes only the top task's application window,
   so a window sitting behind ArcX's runner is unreadable no matter what is set here.
+
+  canTakeScreenshot is what vision workflows run on, and it is the reason ArcX does not need
+  MediaProjection: no per-session system consent dialog, so a workflow that looks at the screen is
+  still one tap. The attribute arrived in API 30 and older platforms ignore it, which is fine —
+  ArcxAccessibilityService gates the call on the capability actually being granted rather than on
+  having asked for it.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
     android:description="@string/arcx_accessibility_description"
     android:notificationTimeout="200" />

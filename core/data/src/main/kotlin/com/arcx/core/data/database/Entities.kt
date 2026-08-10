@@ -62,4 +62,6 @@ data class RunEntity(
     val inputPreview: String,
     val outputPreview: String?,
     val error: String?,
+    /** Absolute path of the run's screenshot in internal storage; null for every other run. */
+    val screenshotPath: String?,
 )

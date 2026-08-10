@@ -6,6 +6,7 @@ import com.arcx.core.common.time.TimeSource
 import com.arcx.core.domain.ai.AiProviderRegistry
 import com.arcx.core.domain.capture.ClipboardAccess
 import com.arcx.core.domain.capture.ScreenContextProvider
+import com.arcx.core.domain.capture.ScreenshotStore
 import com.arcx.core.domain.execution.ExecutionState
 import com.arcx.core.domain.repository.HistoryRepository
 import com.arcx.core.domain.repository.ProviderRepository
@@ -14,6 +15,7 @@ import com.arcx.core.domain.repository.WorkflowRepository
 import com.arcx.core.model.AiChunk
 import com.arcx.core.model.AiError
 import com.arcx.core.model.AiRequest
+import com.arcx.core.model.Attachment
 import com.arcx.core.model.InputSource
 import com.arcx.core.model.ProviderConfig
 import com.arcx.core.model.RunRecord
@@ -42,6 +44,7 @@ class ExecuteWorkflowUseCase @Inject constructor(
     private val settings: SettingsRepository,
     private val registry: AiProviderRegistry,
     private val screen: ScreenContextProvider,
+    private val screenshots: ScreenshotStore,
     private val clipboard: ClipboardAccess,
     private val time: TimeSource,
 ) {
@@ -70,7 +73,27 @@ class ExecuteWorkflowUseCase @Inject constructor(
         }
 
         val inputText = resolveText(workflow, input)
-        if (inputText.isBlank() && input.attachments.isEmpty() && workflow.needsText) {
+
+        // A screenshot workflow's input is the picture. Only a launch that brought no image of its
+        // own asks for one — a shared photo is what the user chose to act on, and overriding it
+        // with the screen would send something they never meant to send.
+        val screenshot = if (workflow.input == InputSource.SCREENSHOT && input.attachments.isEmpty()) {
+            readScreenshot()
+        } else {
+            null
+        }
+        val attachments = input.attachments + listOfNotNull(
+            screenshot?.let { Attachment(mimeType = JPEG, bytes = it) },
+        )
+
+        // Before the provider, deliberately: an imageless vision prompt costs a paid call to come
+        // back with nothing useful. [needsText] never covers this — SCREENSHOT is not a text source.
+        if (workflow.input == InputSource.SCREENSHOT && attachments.isEmpty()) {
+            fail(workflow, config, model, startedAt, inputText, AiError.NoScreenshot())
+            return@flow
+        }
+
+        if (inputText.isBlank() && attachments.isEmpty() && workflow.needsText) {
             fail(workflow, config, model, startedAt, inputText, AiError.NoInput())
             return@flow
         }
@@ -80,7 +103,7 @@ class ExecuteWorkflowUseCase @Inject constructor(
             model = model,
             userPrompt = PromptTemplate.render(workflow.prompt, vars),
             systemPrompt = workflow.systemPrompt?.let { PromptTemplate.render(it, vars) },
-            attachments = input.attachments,
+            attachments = attachments,
             temperature = workflow.temperature,
             maxTokens = workflow.maxTokens,
         )
@@ -100,10 +123,10 @@ class ExecuteWorkflowUseCase @Inject constructor(
 
         val error = failure
         if (error != null) {
-            fail(workflow, config, model, startedAt, inputText, error, answer.toString())
+            fail(workflow, config, model, startedAt, inputText, error, answer.toString(), screenshot)
         } else {
             val text = answer.toString()
-            record(workflow, config, model, startedAt, inputText, RunStatus.SUCCESS, text, null)
+            record(workflow, config, model, startedAt, inputText, RunStatus.SUCCESS, text, null, screenshot)
             emit(ExecutionState.Success(text, time.nowMillis() - startedAt))
         }
     }
@@ -177,6 +200,16 @@ class ExecuteWorkflowUseCase @Inject constructor(
         ""
     }
 
+    /**
+     * Capture is permission-gated and can be revoked between runs, so an unavailable or empty
+     * frame is an ordinary outcome the caller turns into [AiError.NoScreenshot], not a crash.
+     */
+    private suspend fun readScreenshot(): ByteArray? = try {
+        if (screen.canScreenshot()) screen.screenshot()?.takeIf { it.isNotEmpty() } else null
+    } catch (e: Exception) {
+        null
+    }
+
     private fun currentApp(input: WorkflowInput): String =
         input.sourcePackage ?: try {
             screen.currentPackage().orEmpty()
@@ -192,8 +225,12 @@ class ExecuteWorkflowUseCase @Inject constructor(
         inputText: String,
         error: AiError,
         partial: String = "",
+        screenshot: ByteArray? = null,
     ) {
-        record(workflow, config, model, startedAt, inputText, RunStatus.FAILED, partial.ifEmpty { null }, error)
+        record(
+            workflow, config, model, startedAt, inputText,
+            RunStatus.FAILED, partial.ifEmpty { null }, error, screenshot,
+        )
         emit(ExecutionState.Failed(error))
     }
 
@@ -206,11 +243,18 @@ class ExecuteWorkflowUseCase @Inject constructor(
         status: RunStatus,
         output: String?,
         error: AiError?,
+        screenshot: ByteArray?,
     ) {
         if (!settings.current().historyEnabled) return
+        val id = UUID.randomUUID().toString()
+        // Written only once there is a row to point at it, and under that row's id, so clearing
+        // history reaches every image. A file saved for an unrecorded run would be invisible to
+        // History and to "delete all local data" — a leak with no UI left to remove it. Failed
+        // runs keep theirs: seeing what a run acted on is most of why it is worth storing.
+        val screenshotPath = screenshot?.let { screenshots.save(id, it) }
         history.record(
             RunRecord(
-                id = UUID.randomUUID().toString(),
+                id = id,
                 workflowId = workflow.id,
                 workflowName = workflow.name,
                 workflowIcon = workflow.icon,
@@ -223,9 +267,11 @@ class ExecuteWorkflowUseCase @Inject constructor(
                 // shortcut or tile launch carries no text of its own and resolves it from the
                 // clipboard or the screen, so recording the raw input left history blank.
                 // Previews only: the key never comes near this object, nor do attachment bytes.
+                // An image-only run has no text to preview, which is fine and expected.
                 inputPreview = inputText.preview(),
                 outputPreview = output?.preview(),
                 error = error?.message,
+                screenshotPath = screenshotPath,
             ),
         )
     }
@@ -234,6 +280,7 @@ class ExecuteWorkflowUseCase @Inject constructor(
 
     private companion object {
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+        const val JPEG = "image/jpeg"
     }
 }
 

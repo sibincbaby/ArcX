@@ -18,6 +18,7 @@ internal fun AiError.title(): String = when (this) {
     is AiError.ContentBlocked -> "Request was blocked"
     is AiError.NoProvider -> "No provider connected"
     is AiError.NoInput -> "Nothing to work on"
+    is AiError.NoScreenshot -> "Couldn't capture the screen"
     is AiError.Server -> "The provider had a problem"
     is AiError.Unknown -> "Something went wrong"
 }
@@ -34,6 +35,10 @@ internal fun AiError.body(): String = when (this) {
     is AiError.NoProvider -> "Connect a provider first."
     is AiError.NoInput ->
         "Select or copy some text first, then run this workflow again."
+
+    is AiError.NoScreenshot ->
+        "Screen capture needs the screen reading permission, on Android 11 or newer. " +
+            "Turn it on in Settings › Entry points."
 
     is AiError.Server -> "Returned HTTP $code. Trying again usually works."
     is AiError.Unknown -> message ?: "Try again."
