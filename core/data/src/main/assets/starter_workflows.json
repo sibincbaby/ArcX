@@ -186,7 +186,7 @@
       "prompt": "Explain what this screen is showing.\n\nOpen with one sentence naming the app or page and what it is for. Then, if there is anything here the user is likely to be stuck on — an error, a warning, a permission request, an unfamiliar setting, a form to fill in — say what it means and what to do about it.\n\nIf the screen is mainly something to read, give the gist of it instead. Mention layout, colours or icons only when they are the point. If part of the screen is unreadable, say so rather than guessing.\n\nKeep it under about 80 words, in the language on the screen.",
       "temperature": 0.3,
       "isBuiltIn": true,
-      "isPinned": false,
+      "isPinned": true,
       "sortOrder": 16
     }
   ]
