@@ -1,6 +1,7 @@
 package com.arcx.app
 
 import android.app.Application
+import com.arcx.core.domain.repository.WorkflowRepository
 import com.arcx.core.domain.usecase.PurgeExpiredScreenshotsUseCase
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +17,8 @@ class ArcxApplication : Application() {
 
     @Inject lateinit var purgeExpiredScreenshots: PurgeExpiredScreenshotsUseCase
 
+    @Inject lateinit var workflows: WorkflowRepository
+
     /** Process-lifetime scope: these collectors should outlive any single Activity. */
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -27,5 +30,9 @@ class ArcxApplication : Application() {
         // start means the sweep happens even for a user who only ever fires workflows from the
         // bubble and never opens the app, which is most of them.
         appScope.launch { runCatching { purgeExpiredScreenshots() } }
+
+        // Starters added in a later version reach existing installs here. Onboarding alone would
+        // only ever hand them to people who installed after they were written.
+        appScope.launch { runCatching { workflows.installNewBuiltIns() } }
     }
 }

@@ -17,8 +17,11 @@ interface WorkflowRepository {
     suspend fun delete(id: String)
     suspend fun setFavorite(id: String, favorite: Boolean)
     suspend fun setPinned(id: String, pinned: Boolean)
-    /** Seeds the bundled starter workflows. No-op once they have been installed. */
-    suspend fun seedBuiltInsIfEmpty()
+    /**
+     * Installs any bundled starter the user has not been offered before. Safe to call on every
+     * launch: it adds nothing twice, and never resurrects a starter the user deleted.
+     */
+    suspend fun installNewBuiltIns()
 }
 
 interface ProviderRepository {

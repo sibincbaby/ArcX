@@ -175,6 +175,19 @@
       "temperature": 0.2,
       "isBuiltIn": true,
       "sortOrder": 15
+    },
+    {
+      "name": "Explain This Screen",
+      "icon": "👀",
+      "category": "PRODUCTIVITY",
+      "input": "SCREENSHOT",
+      "output": "BOTTOM_SHEET",
+      "systemPrompt": "You are looking at a screenshot of the user's phone screen. You explain what they are looking at in plain language, the way a knowledgeable friend would, and you never invent detail that is not visible in the image.",
+      "prompt": "Explain what this screen is showing.\n\nOpen with one sentence naming the app or page and what it is for. Then, if there is anything here the user is likely to be stuck on — an error, a warning, a permission request, an unfamiliar setting, a form to fill in — say what it means and what to do about it.\n\nIf the screen is mainly something to read, give the gist of it instead. Mention layout, colours or icons only when they are the point. If part of the screen is unreadable, say so rather than guessing.\n\nKeep it under about 80 words, in the language on the screen.",
+      "temperature": 0.3,
+      "isBuiltIn": true,
+      "isPinned": false,
+      "sortOrder": 16
     }
   ]
 }

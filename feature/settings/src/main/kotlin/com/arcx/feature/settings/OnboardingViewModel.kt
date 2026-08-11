@@ -88,7 +88,7 @@ class OnboardingViewModel @Inject constructor(
                 null
             }
 
-            workflows.seedBuiltInsIfEmpty()
+            workflows.installNewBuiltIns()
             settings.update {
                 it.copy(
                     hasOnboarded = true,

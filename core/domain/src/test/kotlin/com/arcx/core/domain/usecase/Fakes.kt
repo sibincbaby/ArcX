@@ -54,7 +54,7 @@ class FakeWorkflowRepository(
         this.pinned[id] = pinned
     }
 
-    override suspend fun seedBuiltInsIfEmpty() {
+    override suspend fun installNewBuiltIns() {
         seeded = true
     }
 }
