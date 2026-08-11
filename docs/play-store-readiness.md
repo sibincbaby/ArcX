@@ -103,7 +103,17 @@ included in backups (`allowBackup=false`, with explicit `dataExtractionRules` ex
 | `FOREGROUND_SERVICE` + `_SPECIAL_USE` | Keep the bubble alive | as above |
 | `POST_NOTIFICATIONS` | Notification output target; bubble's ongoing notification | Results shown in the sheet instead |
 | `RECEIVE_BOOT_COMPLETED` | Restore the bubble after reboot | User re-enables manually |
+| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Ask to exempt the bubble from Doze | Bubble may be stopped in the background |
 | `BIND_ACCESSIBILITY_SERVICE` | `{{screen_text}}`, `{{current_app}}`, in-place text replacement | Those inputs render empty; selection and share entry points unaffected |
+
+`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is a **restricted** permission and needs its own Play
+declaration. The justification is the bubble: a user-enabled, always-available launcher that has
+to stay running while the user is in other apps. It is only ever requested from a button the user
+presses in Settings → Entry points, never on launch, and the app is fully functional without it.
+
+Note for anyone testing on Xiaomi: Doze exemption is **not** what decides whether a killed service
+restarts. MIUI's own Autostart whitelist governs that, and without it clearing ArcX from Recents
+kills the bubble permanently. Settings → Entry points links to both screens.
 
 `QUERY_ALL_PACKAGES` is deliberately **not** requested — a `<queries>` element covers what
 ArcX needs, and the broad permission would trigger a further Play declaration for no benefit.

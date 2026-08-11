@@ -18,4 +18,19 @@ interface SystemSurfaces {
     /** Whether SYSTEM_ALERT_WINDOW is granted, which the floating bubble needs. */
     fun isOverlayGranted(): Boolean
     fun overlaySettingsIntent(): Intent
+
+    /**
+     * Whether the app is exempt from Doze. A foreground service survives longer with it, though
+     * it is not what decides whether a killed service is restarted.
+     */
+    fun isIgnoringBatteryOptimisation(): Boolean
+    fun batteryOptimisationIntent(): Intent
+
+    /**
+     * Several OEMs — Xiaomi most aggressively — refuse to restart a killed process unless the app
+     * is on their own autostart whitelist, which is why the bubble does not come back after the
+     * user clears ArcX from Recents. That list is not reachable through any AOSP API, so this
+     * returns the vendor screen when one is known and resolvable, and null otherwise.
+     */
+    fun autostartIntent(): Intent?
 }

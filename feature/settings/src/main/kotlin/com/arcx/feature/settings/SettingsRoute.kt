@@ -94,11 +94,21 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
             bubbleEnabled = state.settings.bubbleEnabled,
             overlayGranted = state.permissions.overlayGranted,
             screenReadingEnabled = state.permissions.screenReadingEnabled,
+            batteryExempt = state.permissions.batteryExempt,
+            hasAutostartScreen = state.permissions.hasAutostartScreen,
             onBack = { screen = SettingsScreen.ROOT },
             onBubbleEnabledChange = viewModel::onBubbleEnabledChange,
             onOpenOverlaySettings = { context.startActivity(viewModel.overlaySettingsIntent()) },
             onOpenScreenReadingSettings = {
                 context.startActivity(viewModel.screenReadingSettingsIntent())
+            },
+            onOpenBatterySettings = {
+                context.startActivity(viewModel.batteryOptimisationIntent())
+            },
+            // Vendor screens vanish between OEM versions, so a resolvable Intent at read time can
+            // still be gone by the tap; failing silently beats crashing on a settings row.
+            onOpenAutostart = {
+                viewModel.autostartIntent()?.let { runCatching { context.startActivity(it) } }
             },
         )
 

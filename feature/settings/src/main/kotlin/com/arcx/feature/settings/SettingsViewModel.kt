@@ -43,6 +43,9 @@ data class ProviderRow(
 data class SurfacePermissions(
     val overlayGranted: Boolean = false,
     val screenReadingEnabled: Boolean = false,
+    val batteryExempt: Boolean = false,
+    /** Null when this device exposes no autostart screen we can open. */
+    val hasAutostartScreen: Boolean = false,
 )
 
 data class SettingsUiState(
@@ -103,6 +106,8 @@ class SettingsViewModel @Inject constructor(
         permissions.value = SurfacePermissions(
             overlayGranted = surfaces.isOverlayGranted(),
             screenReadingEnabled = surfaces.isScreenReadingEnabled(),
+            batteryExempt = surfaces.isIgnoringBatteryOptimisation(),
+            hasAutostartScreen = surfaces.autostartIntent() != null,
         )
         if (bubbleRequested && permissions.value.overlayGranted) {
             bubbleRequested = false
@@ -124,6 +129,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun overlaySettingsIntent(): Intent = surfaces.overlaySettingsIntent()
+
+    fun batteryOptimisationIntent(): Intent = surfaces.batteryOptimisationIntent()
+
+    fun autostartIntent(): Intent? = surfaces.autostartIntent()
 
     fun screenReadingSettingsIntent(): Intent = surfaces.screenReadingSettingsIntent()
 

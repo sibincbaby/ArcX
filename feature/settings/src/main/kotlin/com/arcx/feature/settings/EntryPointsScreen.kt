@@ -37,6 +37,8 @@ import com.arcx.core.designsystem.R as DesignSystemR
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.compose.material.icons.outlined.BatteryStd
+import androidx.compose.material.icons.outlined.RestartAlt
 import com.arcx.core.designsystem.component.SectionHeader
 
 /**
@@ -48,6 +50,10 @@ import com.arcx.core.designsystem.component.SectionHeader
 internal fun EntryPointsScreen(
     bubbleEnabled: Boolean,
     overlayGranted: Boolean,
+    batteryExempt: Boolean,
+    hasAutostartScreen: Boolean,
+    onOpenBatterySettings: () -> Unit,
+    onOpenAutostart: () -> Unit,
     screenReadingEnabled: Boolean,
     onBack: () -> Unit,
     onBubbleEnabledChange: (Boolean) -> Unit,
@@ -99,6 +105,50 @@ internal fun EntryPointsScreen(
                     onAction = onOpenOverlaySettings,
                 )
             }
+
+            // Clearing ArcX from Recents kills its process, and Android does not restart the
+            // service afterwards on the OEMs that police background starts — the bubble is simply
+            // gone until the app is opened again. These two settings are the only levers a user
+            // has, so say what they are for rather than listing permissions.
+            SectionHeader("Keeping the bubble running")
+            SettingsGroup {
+                SettingsRow(
+                    title = "Battery optimisation",
+                    subtitle = if (batteryExempt) {
+                        "Exempt — Android will not put the bubble to sleep"
+                    } else {
+                        "The bubble may be stopped in the background to save power"
+                    },
+                    icon = Icons.Outlined.BatteryStd,
+                    trailing = {
+                        if (!batteryExempt) {
+                            TextButton(onClick = onOpenBatterySettings) { Text("Allow") }
+                        }
+                    },
+                )
+                if (hasAutostartScreen) {
+                    SettingsRow(
+                        title = "Autostart",
+                        subtitle = "Lets ArcX start itself again after it is closed",
+                        icon = Icons.Outlined.RestartAlt,
+                        trailing = {
+                            TextButton(onClick = onOpenAutostart) { Text("Open") }
+                        },
+                    )
+                }
+            }
+            SettingsNote(
+                if (hasAutostartScreen) {
+                    "If you clear ArcX from Recents the bubble disappears, and your phone will " +
+                        "not bring it back on its own. Turning on Autostart is what allows it to " +
+                        "return; locking ArcX in Recents stops it being cleared in the first " +
+                        "place. Opening ArcX, or using it from the share or selection menu, " +
+                        "always brings the bubble back."
+                } else {
+                    "If you clear ArcX from Recents the bubble disappears until you open ArcX " +
+                        "again, or use it from the share or selection menu."
+                },
+            )
 
             SectionHeader("Screen reading")
             // The disclosure sits above the control on purpose: Play's accessibility policy
