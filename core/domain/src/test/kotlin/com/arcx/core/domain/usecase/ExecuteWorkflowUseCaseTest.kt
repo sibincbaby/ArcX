@@ -484,9 +484,10 @@ class ExecuteWorkflowUseCaseTest {
     }
 
 
-    // A screenshot run sends pixels; without this, history shows a picture and nothing readable.
+    // The picture is the input and the picture is what is stored. Recording the screen's text too
+    // would put the one thing never sent to the provider — a text dump of the screen — on disk.
     @Test
-    fun `screenshot run records the screen text alongside the image`() = runTest {
+    fun `screenshot run stores the image and no screen text`() = runTest {
         val history = FakeHistoryRepository()
         val shot = Workflow(id = "s1", name = "Look", prompt = "Describe it", input = InputSource.SCREENSHOT)
         val useCase = useCase(
@@ -503,7 +504,7 @@ class ExecuteWorkflowUseCaseTest {
         useCase(shot, WorkflowInput()).test { cancelAndIgnoreRemainingEvents() }
 
         val record = history.records.single()
-        assertEquals("words visible on the screen", record.inputPreview)
+        assertEquals("", record.inputPreview)
         assertNotNull(record.screenshotPath)
     }
 
