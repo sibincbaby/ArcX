@@ -29,6 +29,11 @@ Play Console → Policy → App content → **Accessibility API usage**.
 > The service also performs `ACTION_SET_TEXT` on the focused editable field, so an action such
 > as "Fix grammar" can replace the text the user is editing in place rather than making them
 > copy and paste the result.
+>
+> Separately, the service requests the accessibility button
+> (`FLAG_REQUEST_ACCESSIBILITY_BUTTON`) so a user who wants it can assign that button — or the
+> volume-key shortcut — to opening ArcX's workflow list. That is a launch trigger only: the
+> callback starts ArcX's own picker Activity and reads nothing.
 
 **Why no other API is sufficient**
 

@@ -24,6 +24,15 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!--
+              Long-press menu on the app icon. Declared on this Activity rather than the alias
+              below because the launcher reads the static set from the app's main entry, and this
+              is the icon a user long-presses.
+            -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!--
@@ -70,6 +79,27 @@
             </intent-filter>
 
         </activity>
+
+        <!--
+          A launcher-visible door to the picker. RunnerActivity already *is* the picker when no
+          workflow id comes with the intent — the Quick Settings tile and arcx://run/ both rely on
+          that — but only a component carrying MAIN/LAUNCHER can be seen by the surfaces that let a
+          user wire up their own trigger: a home-screen icon, Samsung's Apps edge panel, Bixby
+          Routines, a side-key gesture, a third-party launcher's gesture binding.
+
+          An alias rather than a second Activity, because there is no second behaviour to write —
+          it is the same component under a name the system can enumerate.
+        -->
+        <activity-alias
+            android:name=".runner.ActionsAlias"
+            android:exported="true"
+            android:label="@string/arcx_actions_label"
+            android:targetActivity=".runner.RunnerActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
     </application>
 

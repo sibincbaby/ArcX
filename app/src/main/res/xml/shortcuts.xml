@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The one shortcut ArcX declares statically. Everything else in the long-press menu is published at
+  runtime by ArcxShortcuts from the user's favourites, and a favourite that has been renamed or
+  deleted has to disappear with it — which a manifest shortcut cannot do. "Actions" is the opposite
+  case: it opens the picker, so it is true for every user and never goes stale.
+
+  Declared here rather than added to the dynamic set because dynamic shortcuts are republished
+  wholesale on every favourites change, and this one should not depend on that ever running.
+
+  The intent is explicit: an implicit VIEW would be resolved by the launcher, on ArcX's behalf,
+  possibly long after this version was installed.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_arcx_spark"
+        android:shortcutId="arcx_actions"
+        android:shortcutLongLabel="@string/arcx_actions_long_label"
+        android:shortcutShortLabel="@string/arcx_actions_short_label">
+        <!--
+          arcx://run/ with no id is the picker — the same URI the tile and the bubble fire, so all
+          four surfaces stay on one contract. See ArcxDeepLinks.
+        -->
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="arcx://run/"
+            android:targetClass="com.arcx.app.runner.RunnerActivity"
+            android:targetPackage="com.arcx.app" />
+    </shortcut>
+
+</shortcuts>

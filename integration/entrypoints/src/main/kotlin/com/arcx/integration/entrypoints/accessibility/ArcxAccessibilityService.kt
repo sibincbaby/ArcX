@@ -1,5 +1,6 @@
 package com.arcx.integration.entrypoints.accessibility
 
+import android.accessibilityservice.AccessibilityButtonController
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
@@ -15,6 +16,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.scale
+import com.arcx.integration.entrypoints.ArcxDeepLinks
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -172,6 +174,12 @@ class ArcxAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         AccessibilityServiceHolder.attach(this)
+        // Registering does not claim the button — the user assigns it, and this callback is simply
+        // never invoked until they do. Throws on a platform that has no such control, which is not
+        // worth taking the whole service down for.
+        runCatching {
+            accessibilityButtonController.registerAccessibilityButtonCallback(accessibilityButton)
+        }
     }
 
     /**
@@ -201,6 +209,25 @@ class ArcxAccessibilityService : AccessibilityService() {
         scope.launch { captureScreen(stabilise = false) }
     }
 
+    /**
+     * The accessibility button — floating in gesture navigation, in the nav bar with three-button,
+     * or held on both volume keys — opens the picker.
+     *
+     * Only fires once the user has assigned ArcX to it in Settings > Accessibility, so nobody gets
+     * this without asking for it. Unlike the bubble it costs no screen space and no foreground
+     * service, and unlike the tile it does not need the shade pulled down.
+     *
+     * A background activity start would normally be refused, but this callback is the system
+     * reporting that the user just pressed a system button, which is one of the exemptions. If a
+     * future platform tightens that, the failure is this launch doing nothing — hence runCatching
+     * rather than a crash in a service the user cannot easily restart.
+     */
+    private val accessibilityButton = object : AccessibilityButtonController.AccessibilityButtonCallback() {
+        override fun onClicked(controller: AccessibilityButtonController) {
+            runCatching { startActivity(ArcxDeepLinks.intent(this@ArcxAccessibilityService)) }
+        }
+    }
+
     override fun onInterrupt() = Unit
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -215,6 +242,9 @@ class ArcxAccessibilityService : AccessibilityService() {
 
     private fun teardown() {
         AccessibilityServiceHolder.detach(this)
+        runCatching {
+            accessibilityButtonController.unregisterAccessibilityButtonCallback(accessibilityButton)
+        }
         // Nothing the user looked at outlives the service being switched off.
         snapshot = null
         frame = null
