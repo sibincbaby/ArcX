@@ -79,7 +79,14 @@ redacted in the debug HTTP log), and excluded from backup.
 
 ## Status
 
-v1 feature-complete and verified end to end on a physical device. See
+v1 feature-complete and verified end to end on a physical device.
+
+[`docs/architecture.md`](docs/architecture.md) is the full account: the original idea, what was
+built versus deferred, and every non-obvious decision with the device evidence behind it. Read it
+before changing anything structural — several things in here look like bugs and are not.
+[`CLAUDE.md`](CLAUDE.md) is the short operational version for coding agents.
+
+See
 [`docs/play-store-readiness.md`](docs/play-store-readiness.md) for what remains before a Play
 release — chiefly a signing config, a hosted privacy policy, and the two manual-review
 declarations for the accessibility service and the `specialUse` foreground service.

@@ -1,0 +1,170 @@
+# ArcX
+
+Android **personal AI workflow launcher**. A user builds a reusable AI action once — name, input
+source, prompt, provider, output target — and fires it from anywhere: share sheet, text-selection
+menu, floating bubble, Quick Settings tile, launcher icon, shortcut, widget, accessibility button.
+
+**BYOK.** The user brings their own provider key. ArcX has no account, no backend, and no server-side
+state. Nothing about the product may quietly break that.
+
+Deeper background — the original PRD, what was built vs. dropped, and every non-obvious decision with
+its evidence — is in `docs/architecture.md`. Read it before any structural change.
+
+---
+
+## Commands
+
+```bash
+./gradlew testDebugUnitTest          # 63 unit tests, all modules
+./gradlew installDebug               # build + install on the attached device
+./gradlew :core:domain:testDebugUnitTest
+adb logcat -d | grep -E "arcx|AndroidRuntime"
+```
+
+There is **no lint or ktlint task wired up**. Do not claim one was run.
+
+## Verifying on a device
+
+This project is verified on real hardware, not emulators, because most of its hard problems are
+OEM behaviour. The useful probes:
+
+```bash
+adb shell am start -n com.arcx.app/.MainActivity
+adb shell am start -a android.intent.action.VIEW -d "arcx://run/"      # picker
+adb shell am start -a android.intent.action.VIEW -d "arcx://run/<id>"  # one workflow
+adb shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "hi"
+adb shell dumpsys activity activities | grep -m1 topResumedActivity     # what is actually in front
+adb shell dumpsys window windows | grep -oE "com\.arcx\.app, frame=\[Rect\([^)]*\)\]"
+adb shell settings get secure enabled_accessibility_services
+adb shell cmd accessibility call-system-action 11                       # fire the a11y button
+adb shell run-as com.arcx.app cat /data/data/com.arcx.app/files/datastore/arcx_settings.preferences_pb | strings
+```
+
+**`adb shell input tap` is unreliable here.** ArcX's own bubble and the system accessibility button
+are floating windows that intercept taps. Always read the real frame from `dumpsys window windows`
+first, and confirm the outcome with `topResumedActivity` rather than assuming the tap landed.
+
+**`am force-stop com.arcx.app` revokes the accessibility service** on Samsung and Xiaomi. If a test
+suddenly shows screen reading as broken, check `enabled_accessibility_services` before debugging code.
+
+---
+
+## Build stack — read before touching Gradle
+
+AGP 9 is not AGP 8, and most of the internet is still about AGP 8.
+
+| | |
+|---|---|
+| AGP | 9.3.1 |
+| Kotlin | 2.2.10 — **shipped by AGP**, not declared separately |
+| KSP | 2.2.10-2.0.2 (must match Kotlin exactly) |
+| Hilt | 2.59.2 (requires AGP 9) |
+| compileSdk / target / min | 37 / 36 / 26 |
+| Compose BOM | 2026.06.01 |
+
+Traps that have already cost time:
+
+- **Never add `org.jetbrains.kotlin.android`.** AGP 9 rejects it; Kotlin comes from AGP.
+- **AGP 9 DSL interfaces dropped the Action-taking overloads.** Convention plugins use property
+  access (`commonExtension.compileSdk = …`), not `defaultConfig { … }`. See
+  `build-logic/convention/.../ProjectExtensions.kt`.
+- `CommonExtension` is no longer generic — no type arguments.
+- `android.disallowKotlinSourceSets=false` in `gradle.properties` is **load-bearing**; KSP fails
+  without it.
+
+---
+
+## Modules
+
+14 modules, ~125 Kotlin files. Dependencies point inward; nothing in `core/` knows about `feature/`.
+
+```
+:app                     Application, MainActivity, RunnerActivity, the merged manifest
+:core:model              Pure Kotlin contracts. No Android imports.
+:core:common             Dispatchers, PromptTemplate, TimeSource
+:core:designsystem       Theme + shared composables (WorkflowIcon, WorkflowPanel*)
+:core:data               Room, DataStore, KeystoreVault, repository impls
+:core:ai                 AiProvider abstraction, Gemini, SSE parsing, registry
+:core:domain             Repository interfaces, ports, use cases
+:feature:{home,workflow,runner,history,settings,discover}
+:integration:entrypoints Accessibility service, bubble, widget, tile, shortcuts
+```
+
+**`:integration:entrypoints` must never depend on `:app`.** It reaches the runner through the
+`arcx://run/{id}` URI and the component-name constant in `ArcxDeepLinks`, resolved by the manifest
+merger at install time. Do not "fix" this into a class reference.
+
+`:feature:settings` talks to system surfaces through the `SystemSurfaces` port in `:core:domain`,
+implemented by `ArcxEntrypoints`. Add new system-permission state there, not by adding a module
+dependency.
+
+---
+
+## The one execution path
+
+Every entry point ends in `ExecuteWorkflowUseCase`. Provider resolution, variable expansion,
+history and error mapping exist exactly once. **Do not add a second path.**
+
+`RunnerActivity` is the single Activity entry point. It uses **standard launch mode on purpose** —
+`ACTION_PROCESS_TEXT` returns its replacement via `setResult`, which only reaches the caller when the
+Activity runs in the caller's task. `singleTask` breaks text replacement.
+
+## What is actually built
+
+- **One provider.** `ProviderType` declares 8 (GEMINI, OPENAI, ANTHROPIC, OPENROUTER, GROQ, OLLAMA,
+  LMSTUDIO, OPENAI_COMPATIBLE) but **only GEMINI has an implementation and a `@Binds @IntoMap`
+  entry** in `AiModule`. The enum is a seam, not a feature list. Do not tell a user ArcX supports
+  OpenAI.
+- **Gemini streaming needs `?alt=sse`.** Without it the endpoint returns a chunked JSON array, not
+  SSE.
+- **Discover is local only** — a bundled `gallery.json` plus `.arcx.json` import/export. There is no
+  community backend, no ratings, no search. That was deferred, not forgotten.
+- 16 starter workflows in `core/data/src/main/assets/starter_workflows.json`.
+- Release builds are **unsigned**. No signing config exists.
+- No monetization code of any kind.
+
+## Secrets
+
+API keys live only in `KeystoreVault` (AndroidKeystore AES-256-GCM; `androidx.security:security-crypto`
+is deprecated and deliberately unused). Keys never enter Room, never reach logs — the OkHttp
+interceptor redacts the auth header — and `allowBackup=false` with explicit `dataExtractionRules`.
+Verified by searching app storage for the plaintext key and finding only ciphertext. Keep it that way.
+
+---
+
+## Constraints discovered on device — do not undo these
+
+Each of these looks like a bug and is not. They are commented at the code site; this is the index.
+
+1. **The bubble's overlay window must stay `FLAG_NOT_FOCUSABLE`, expanded as well as collapsed**
+   (`BubbleOverlay.kt`, `EXPANDED_FLAGS`). The moment it takes focus, Android stops exposing the app
+   underneath to accessibility entirely — `getWindows()` returned only system bars and the overlay,
+   and workflows summarised a browser toolbar. This is why the bubble panel has no search box: a
+   non-focusable window cannot host a text field.
+2. **A `ComposeView` is a `ViewGroup`, so `setOnTouchListener` never fires** — `AndroidComposeView`
+   always consumes. Bubble gestures live in a `FrameLayout` host that overrides
+   `onInterceptTouchEvent`/`onTouchEvent`.
+3. **Compose in a `WindowManager` view needs ViewTree owners set on the window root**, not on an
+   inner view, or it crashes on attach.
+4. **MIUI/Xiaomi will not restart a killed service** unless the app is on the vendor Autostart
+   whitelist. Battery-optimisation exemption does **not** fix this — different mechanism. Settings →
+   Entry points links to both.
+5. **Screen text is read as a screen opens**, snapshot cached with a 2-minute TTL, because Android
+   only exposes the frontmost window and ArcX's own UI covers it during a run. The service subscribes
+   to `typeWindowStateChanged` only; subscribing to `typeWindowContentChanged` is the classic
+   battery-destroying mistake.
+6. **The QS tile `startActivityAndCollapse(Intent)` overload throws on API 34+.** Use the
+   `PendingIntent` overload above 33.
+
+## Conventions
+
+- Comments explain **why**, especially where the code looks wrong but is not. Match that density;
+  do not strip these comments as "noise".
+- Prefer the stdlib/platform answer. An `<activity-alias>` beat a second Activity; a static shortcut
+  beat runtime publishing.
+- **Verify claims on the device before writing them down.** Several confident diagnoses in this
+  project's history were wrong — an "off-screen" bubble that was simply in landscape, a "broken" fix
+  that was a bad test setup. State what was observed, not what should happen.
+- **Never** add `Co-Authored-By` or any AI attribution to commit messages.
+- Git: personal account `sibincbaby`, remote `git@github-personal:sibincbaby/ArcX.git`.
+- Commit only when asked.
