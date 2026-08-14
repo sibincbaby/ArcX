@@ -126,6 +126,13 @@ class OverlayService : Service() {
                 .distinctUntilChanged()
                 .collect { enabled -> if (!enabled) stopSelf() }
         }
+
+        scope.launch {
+            settingsRepository.settings
+                .map { it.bubbleOpensFullList }
+                .distinctUntilChanged()
+                .collect { bubble.updateOpensFullList(it) }
+        }
     }
 
     /**

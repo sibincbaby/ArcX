@@ -3,6 +3,7 @@ package com.arcx.feature.runner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arcx.core.domain.execution.ExecutionState
+import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.domain.repository.WorkflowRepository
 import com.arcx.core.domain.usecase.ExecuteWorkflowUseCase
 import com.arcx.core.model.Workflow
@@ -13,6 +14,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -31,6 +34,8 @@ data class RunnerUiState(
     val sections: List<PickerSection> = emptyList(),
     /** False until the catalog's first emission, so the picker never flashes its empty state. */
     val catalogLoaded: Boolean = false,
+    /** Mirrors UserSettings.compactPicker: the picker without its search box. */
+    val compactPicker: Boolean = false,
     /** Null while the picker is up; non-null once a workflow is running or has finished. */
     val workflow: Workflow? = null,
     /**
@@ -56,6 +61,7 @@ private data class Catalog(
 class RunnerViewModel @Inject constructor(
     private val workflows: WorkflowRepository,
     private val executeWorkflow: ExecuteWorkflowUseCase,
+    settings: SettingsRepository,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
@@ -73,13 +79,22 @@ class RunnerViewModel @Inject constructor(
         // results it is never going to show.
         .onStart { emit(Catalog()) }
 
-    val uiState: StateFlow<RunnerUiState> = combine(catalog, query, runState) { catalog, query, run ->
-        run.copy(
-            query = query,
-            sections = if (run.workflow != null) emptyList() else sections(catalog, query),
-            catalogLoaded = catalog.loaded,
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_GRACE_MS), RunnerUiState())
+    // Started at the default rather than waited on: the picker must draw the instant the sheet
+    // opens, and DataStore's first emission — however quick — is still a frame this cannot spend.
+    private val compactPicker = settings.settings
+        .map { it.compactPicker }
+        .onStart { emit(false) }
+        .distinctUntilChanged()
+
+    val uiState: StateFlow<RunnerUiState> =
+        combine(catalog, query, runState, compactPicker) { catalog, query, run, compact ->
+            run.copy(
+                query = query,
+                sections = if (run.workflow != null) emptyList() else sections(catalog, query),
+                catalogLoaded = catalog.loaded,
+                compactPicker = compact,
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_GRACE_MS), RunnerUiState())
 
     /**
      * Idempotent: a configuration change re-enters composition with the same request, and

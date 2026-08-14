@@ -38,6 +38,8 @@ internal class SettingsRepositoryImpl @Inject constructor(
             prefs[Keys.HISTORY_ENABLED] = updated.historyEnabled
             prefs[Keys.HAS_ONBOARDED] = updated.hasOnboarded
             prefs[Keys.BUBBLE_ENABLED] = updated.bubbleEnabled
+            prefs[Keys.BUBBLE_OPENS_FULL_LIST] = updated.bubbleOpensFullList
+            prefs[Keys.COMPACT_PICKER] = updated.compactPicker
             prefs[Keys.SCREENSHOT_RETENTION] = updated.screenshotRetention.name
             val defaultProvider = updated.defaultProviderId
             if (defaultProvider == null) prefs.remove(Keys.DEFAULT_PROVIDER_ID)
@@ -55,6 +57,9 @@ internal class SettingsRepositoryImpl @Inject constructor(
             hasOnboarded = this[Keys.HAS_ONBOARDED] ?: defaults.hasOnboarded,
             defaultProviderId = this[Keys.DEFAULT_PROVIDER_ID],
             bubbleEnabled = this[Keys.BUBBLE_ENABLED] ?: defaults.bubbleEnabled,
+            bubbleOpensFullList = this[Keys.BUBBLE_OPENS_FULL_LIST]
+                ?: defaults.bubbleOpensFullList,
+            compactPicker = this[Keys.COMPACT_PICKER] ?: defaults.compactPicker,
             // An unreadable value falls back to the default rather than to FOREVER: the safe
             // reading of a broken preference is "expire these", not "keep them all".
             screenshotRetention = this[Keys.SCREENSHOT_RETENTION]
@@ -70,6 +75,8 @@ internal class SettingsRepositoryImpl @Inject constructor(
         val HAS_ONBOARDED = booleanPreferencesKey("has_onboarded")
         val DEFAULT_PROVIDER_ID = stringPreferencesKey("default_provider_id")
         val BUBBLE_ENABLED = booleanPreferencesKey("bubble_enabled")
+        val BUBBLE_OPENS_FULL_LIST = booleanPreferencesKey("bubble_opens_full_list")
+        val COMPACT_PICKER = booleanPreferencesKey("compact_picker")
         val SCREENSHOT_RETENTION = stringPreferencesKey("screenshot_retention")
     }
 }

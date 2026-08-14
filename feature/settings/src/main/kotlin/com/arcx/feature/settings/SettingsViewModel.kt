@@ -148,6 +148,11 @@ class SettingsViewModel @Inject constructor(
 
     fun onAddQuickTile() = surfaces.requestAddQuickTile()
 
+    fun onBubbleOpensFullListChange(enabled: Boolean) =
+        update { it.copy(bubbleOpensFullList = enabled) }
+
+    fun onCompactPickerChange(enabled: Boolean) = update { it.copy(compactPicker = enabled) }
+
     fun overlaySettingsIntent(): Intent = surfaces.overlaySettingsIntent()
 
     fun batteryOptimisationIntent(): Intent = surfaces.batteryOptimisationIntent()

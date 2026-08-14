@@ -99,10 +99,14 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
             launcherIconEnabled = state.permissions.launcherIconEnabled,
             accessibilityButtonAssigned = state.permissions.accessibilityButtonAssigned,
             canAddQuickTile = state.permissions.canAddQuickTile,
+            bubbleOpensFullList = state.settings.bubbleOpensFullList,
+            compactPicker = state.settings.compactPicker,
             onBack = { screen = SettingsScreen.ROOT },
             onBubbleEnabledChange = viewModel::onBubbleEnabledChange,
             onLauncherIconChange = viewModel::onLauncherIconChange,
             onAddQuickTile = viewModel::onAddQuickTile,
+            onBubbleOpensFullListChange = viewModel::onBubbleOpensFullListChange,
+            onCompactPickerChange = viewModel::onCompactPickerChange,
             onOpenOverlaySettings = { context.startActivity(viewModel.overlaySettingsIntent()) },
             onOpenScreenReadingSettings = {
                 context.startActivity(viewModel.screenReadingSettingsIntent())

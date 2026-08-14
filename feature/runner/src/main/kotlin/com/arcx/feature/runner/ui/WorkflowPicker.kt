@@ -45,6 +45,7 @@ internal fun WorkflowPicker(
     onQueryChange: (String) -> Unit,
     onPick: (Workflow) -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     Column(modifier.imePadding()) {
         Text(
@@ -53,19 +54,23 @@ internal fun WorkflowPicker(
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
         )
 
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = onQueryChange,
-            placeholder = { Text("Search") },
-            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-        )
+        // Left out in compact mode to match the bubble's panel, which cannot have a text field
+        // at all — its window stays non-focusable so the app underneath remains readable.
+        if (!compact) {
+            OutlinedTextField(
+                value = state.query,
+                onValueChange = onQueryChange,
+                placeholder = { Text("Search") },
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+            )
 
-        Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp))
+        }
 
         when {
             !state.catalogLoaded -> Box(

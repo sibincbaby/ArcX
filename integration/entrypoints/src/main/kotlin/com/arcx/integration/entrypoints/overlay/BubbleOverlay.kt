@@ -103,6 +103,9 @@ internal class BubbleOverlay(
     private var snapAnimator: ValueAnimator? = null
 
     private var expanded by mutableStateOf(false)
+
+    /** Mirrors UserSettings.bubbleOpensFullList; see [updateOpensFullList]. */
+    private var opensFullList = false
     private var workflows by mutableStateOf(emptyList<Workflow>())
 
     /** True from the tap until the panel actually opens, while a frame grab is in flight. */
@@ -131,6 +134,14 @@ internal class BubbleOverlay(
 
     fun updateWorkflows(list: List<Workflow>) {
         workflows = list
+    }
+
+    /**
+     * Whether a tap opens the full picker instead of the panel. Held rather than read at tap time
+     * so the touch handler stays synchronous; the settings collector sets it long before any tap.
+     */
+    fun updateOpensFullList(opens: Boolean) {
+        opensFullList = opens
     }
 
     /**
@@ -286,7 +297,22 @@ internal class BubbleOverlay(
         // Fired before the frame grab rather than after it: the text read wants the earliest moment
         // it can get and does not care what is drawn, so it must not inherit the grab's delay.
         onExpanded()
-        if (!grabFrameThenOpen()) openPanel()
+        if (!grabFrameThenOpen()) finishOpen()
+    }
+
+    /**
+     * Both destinations go through here so neither can skip the capture above. Handing off to the
+     * full picker still has to happen *after* the screen has been read and photographed — that
+     * Activity is about to cover the very screen a workflow may be asked about, and the snapshot
+     * taken here is what it will answer from.
+     */
+    private fun finishOpen() {
+        if (opensFullList) {
+            expanding = false
+            onMore()
+        } else {
+            openPanel()
+        }
     }
 
     /**
@@ -318,7 +344,7 @@ internal class BubbleOverlay(
             if (released) return@Runnable
             released = true
             drawn.visibility = View.VISIBLE
-            openPanel()
+            finishOpen()
         }
         drawn.postDelayed(release, FRAME_GRAB_TIMEOUT_MS)
 

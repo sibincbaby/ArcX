@@ -19,7 +19,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Accessibility
 import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.CloseFullscreen
 import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.PictureInPictureAlt
@@ -61,10 +63,14 @@ internal fun EntryPointsScreen(
     launcherIconEnabled: Boolean,
     accessibilityButtonAssigned: Boolean,
     canAddQuickTile: Boolean,
+    bubbleOpensFullList: Boolean,
+    compactPicker: Boolean,
     onBack: () -> Unit,
     onBubbleEnabledChange: (Boolean) -> Unit,
     onLauncherIconChange: (Boolean) -> Unit,
     onAddQuickTile: () -> Unit,
+    onBubbleOpensFullListChange: (Boolean) -> Unit,
+    onCompactPickerChange: (Boolean) -> Unit,
     onOpenOverlaySettings: () -> Unit,
     onOpenScreenReadingSettings: () -> Unit,
 ) {
@@ -287,6 +293,32 @@ internal fun EntryPointsScreen(
                     "the floating bubble, which Android requires to run behind an ongoing " +
                     "notification.",
             )
+
+            // The two lists differ because the bubble's window may never take focus — without
+            // that, the app underneath stops being readable, which is the whole point of the
+            // bubble. A non-focusable window cannot host a text field, so its panel has no
+            // search. Everything else opens a normal Activity and has no such limit. Both of
+            // those are defaults, not rules, so both are switchable here.
+            SectionHeader("Workflow list")
+            SettingsGroup {
+                SettingsSwitchRow(
+                    title = "Bubble opens the full list",
+                    subtitle = "Search included, like every other entry point. The screen is " +
+                        "still read before the list appears, so workflows that use it keep " +
+                        "working — but the list covers the app instead of floating over it.",
+                    icon = Icons.Outlined.OpenInFull,
+                    checked = bubbleOpensFullList,
+                    onCheckedChange = onBubbleOpensFullListChange,
+                )
+                SettingsSwitchRow(
+                    title = "Compact list everywhere else",
+                    subtitle = "Drops the search box from the tile, share sheet, shortcuts and " +
+                        "the drawer icon, so they match the bubble's panel.",
+                    icon = Icons.Outlined.CloseFullscreen,
+                    checked = compactPicker,
+                    onCheckedChange = onCompactPickerChange,
+                )
+            }
             Spacer(Modifier.height(24.dp))
         }
     }

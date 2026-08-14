@@ -108,6 +108,7 @@ fun RunnerHost(
                     state = state,
                     onQueryChange = viewModel::onQueryChange,
                     onPick = { viewModel.run(it) },
+                    compact = state.compactPicker,
                 )
             }
         } else {
