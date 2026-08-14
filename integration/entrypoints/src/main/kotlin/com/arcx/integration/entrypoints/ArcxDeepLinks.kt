@@ -18,6 +18,13 @@ object ArcxDeepLinks {
     const val SCHEME: String = "arcx"
     const val HOST: String = "run"
 
+    /**
+     * The launcher alias in :app that opens the picker. A name rather than a class reference for
+     * the same reason as [uri] — this module must not depend on :app — and it is only ever used to
+     * toggle the icon, so a rename would cost a dead switch rather than a crash.
+     */
+    const val ACTIONS_ALIAS: String = "com.arcx.app.runner.ActionsAlias"
+
     /** `arcx://run/{id}`, or `arcx://run/` when [workflowId] is null — that opens the picker. */
     fun uri(workflowId: String? = null): Uri = "$SCHEME://$HOST/${workflowId.orEmpty()}".toUri()
 

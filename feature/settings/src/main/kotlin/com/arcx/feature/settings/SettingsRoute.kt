@@ -96,8 +96,11 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
             screenReadingEnabled = state.permissions.screenReadingEnabled,
             batteryExempt = state.permissions.batteryExempt,
             hasAutostartScreen = state.permissions.hasAutostartScreen,
+            launcherIconEnabled = state.permissions.launcherIconEnabled,
+            accessibilityButtonAssigned = state.permissions.accessibilityButtonAssigned,
             onBack = { screen = SettingsScreen.ROOT },
             onBubbleEnabledChange = viewModel::onBubbleEnabledChange,
+            onLauncherIconChange = viewModel::onLauncherIconChange,
             onOpenOverlaySettings = { context.startActivity(viewModel.overlaySettingsIntent()) },
             onOpenScreenReadingSettings = {
                 context.startActivity(viewModel.screenReadingSettingsIntent())

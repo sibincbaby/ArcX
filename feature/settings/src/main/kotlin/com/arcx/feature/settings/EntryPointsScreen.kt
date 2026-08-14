@@ -18,7 +18,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Accessibility
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.PictureInPictureAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -55,8 +57,11 @@ internal fun EntryPointsScreen(
     onOpenBatterySettings: () -> Unit,
     onOpenAutostart: () -> Unit,
     screenReadingEnabled: Boolean,
+    launcherIconEnabled: Boolean,
+    accessibilityButtonAssigned: Boolean,
     onBack: () -> Unit,
     onBubbleEnabledChange: (Boolean) -> Unit,
+    onLauncherIconChange: (Boolean) -> Unit,
     onOpenOverlaySettings: () -> Unit,
     onOpenScreenReadingSettings: () -> Unit,
 ) {
@@ -150,6 +155,27 @@ internal fun EntryPointsScreen(
                 },
             )
 
+            // The workflow list is a plain Activity, so anything that can point at a launcher
+            // component can open it. The switch is here because that convenience arrives as a
+            // second icon in the app drawer, which not everyone wants.
+            SectionHeader("Quick launch")
+            SettingsGroup {
+                SettingsSwitchRow(
+                    title = "App drawer icon",
+                    subtitle = "Adds an \"ArcX Actions\" icon that opens your workflow list " +
+                        "straight away. Drag it onto a home screen or into an Edge panel, or " +
+                        "point a Routine or a side-key gesture at it.",
+                    icon = Icons.Outlined.Apps,
+                    checked = launcherIconEnabled,
+                    onCheckedChange = onLauncherIconChange,
+                )
+            }
+            SettingsNote(
+                "Two more ways in are always available and need no setup: the ArcX tile, which " +
+                    "you add once from the panel at the top of your screen, and holding down the " +
+                    "ArcX icon for \"Actions\".",
+            )
+
             SectionHeader("Screen reading")
             // The disclosure sits above the control on purpose: Play's accessibility policy
             // wants it in front of the user before they act, not tucked under the switch.
@@ -186,6 +212,28 @@ internal fun EntryPointsScreen(
                     trailing = {
                         TextButton(onClick = onOpenScreenReadingSettings) {
                             Text(if (screenReadingEnabled) "Manage" else "Enable")
+                        }
+                    },
+                )
+                // Grouped under screen reading rather than with the other launch surfaces because
+                // it is the same service: with screen reading off there is nothing to assign.
+                SettingsRow(
+                    title = "Accessibility button",
+                    subtitle = when {
+                        !screenReadingEnabled ->
+                            "Turn screen reading on first, then ArcX can be assigned to it"
+                        accessibilityButtonAssigned ->
+                            "Assigned — opens your workflows from inside any app"
+                        else ->
+                            "Not assigned. Choose ArcX under Accessibility button to open " +
+                                "workflows without leaving the app you are in."
+                    },
+                    icon = Icons.Outlined.TouchApp,
+                    trailing = {
+                        if (screenReadingEnabled) {
+                            TextButton(onClick = onOpenScreenReadingSettings) {
+                                Text(if (accessibilityButtonAssigned) "Manage" else "Set up")
+                            }
                         }
                     },
                 )

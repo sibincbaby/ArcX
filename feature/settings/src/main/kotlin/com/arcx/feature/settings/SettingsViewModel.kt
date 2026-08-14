@@ -46,6 +46,9 @@ data class SurfacePermissions(
     val batteryExempt: Boolean = false,
     /** Null when this device exposes no autostart screen we can open. */
     val hasAutostartScreen: Boolean = false,
+    /** The separate "ArcX Actions" launcher icon; on unless the user has switched it off. */
+    val launcherIconEnabled: Boolean = true,
+    val accessibilityButtonAssigned: Boolean = false,
 )
 
 data class SettingsUiState(
@@ -108,6 +111,8 @@ class SettingsViewModel @Inject constructor(
             screenReadingEnabled = surfaces.isScreenReadingEnabled(),
             batteryExempt = surfaces.isIgnoringBatteryOptimisation(),
             hasAutostartScreen = surfaces.autostartIntent() != null,
+            launcherIconEnabled = surfaces.isLauncherIconEnabled(),
+            accessibilityButtonAssigned = surfaces.isAccessibilityButtonAssigned(),
         )
         if (bubbleRequested && permissions.value.overlayGranted) {
             bubbleRequested = false
@@ -126,6 +131,16 @@ class SettingsViewModel @Inject constructor(
         }
         bubbleRequested = false
         update { it.copy(bubbleEnabled = enabled) }
+    }
+
+    /**
+     * Written straight through to the package manager rather than to preferences, then mirrored
+     * into state so the switch moves now — the launcher takes a moment to drop the icon, and
+     * waiting for the next resume to re-read would leave the switch looking stuck.
+     */
+    fun onLauncherIconChange(enabled: Boolean) {
+        surfaces.setLauncherIconEnabled(enabled)
+        permissions.value = permissions.value.copy(launcherIconEnabled = enabled)
     }
 
     fun overlaySettingsIntent(): Intent = surfaces.overlaySettingsIntent()

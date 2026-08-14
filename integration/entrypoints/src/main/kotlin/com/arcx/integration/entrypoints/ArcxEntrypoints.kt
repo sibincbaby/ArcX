@@ -3,6 +3,7 @@ package com.arcx.integration.entrypoints
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
@@ -70,6 +71,31 @@ class ArcxEntrypoints @Inject constructor(
         // Vendor components come and go between OEM versions, so never trust the list — only ever
         // hand back something this device actually has an activity for.
         .firstOrNull { it.resolves() }
+
+    /** DEFAULT means "whatever the manifest said", and the manifest ships it enabled. */
+    override fun isLauncherIconEnabled(): Boolean =
+        context.packageManager.getComponentEnabledSetting(actionsAlias()) !=
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+
+    override fun setLauncherIconEnabled(enabled: Boolean) {
+        context.packageManager.setComponentEnabledSetting(
+            actionsAlias(),
+            if (enabled) {
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            } else {
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            },
+            // Without DONT_KILL_APP the platform restarts ArcX the moment the switch is flipped,
+            // taking the settings screen the user is looking at — and the bubble — with it.
+            PackageManager.DONT_KILL_APP,
+        )
+    }
+
+    override fun isAccessibilityButtonAssigned(): Boolean =
+        ArcxAccessibility.isButtonAssigned(context)
+
+    private fun actionsAlias(): ComponentName =
+        ComponentName(context.packageName, ArcxDeepLinks.ACTIONS_ALIAS)
 
     private fun Intent.resolves(): Boolean =
         context.packageManager.resolveActivity(this, 0) != null

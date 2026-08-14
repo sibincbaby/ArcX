@@ -33,4 +33,21 @@ interface SystemSurfaces {
      * returns the vendor screen when one is known and resolvable, and null otherwise.
      */
     fun autostartIntent(): Intent?
+
+    /**
+     * The "ArcX Actions" launcher icon, which opens the workflow list without going through the
+     * app. It is what a home screen, a Samsung Edge panel, a Routine or a gesture binding can see,
+     * and it is also a second icon in the drawer — so it has to be switchable.
+     *
+     * Not a stored preference: the component's own enabled state is the truth, and a preference
+     * beside it could only ever disagree with the launcher.
+     */
+    fun isLauncherIconEnabled(): Boolean
+    fun setLauncherIconEnabled(enabled: Boolean)
+
+    /**
+     * Whether the user has pointed the accessibility button, or the volume-key shortcut, at ArcX.
+     * Assigned in system Settings like every other accessibility choice, so this only reports.
+     */
+    fun isAccessibilityButtonAssigned(): Boolean
 }
