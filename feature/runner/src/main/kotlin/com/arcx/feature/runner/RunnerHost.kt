@@ -70,10 +70,16 @@ fun RunnerHost(
     val workflow = state.workflow
     val popup = workflow?.output == OutputTarget.POPUP
 
+    // A compact run is hosted as a floating card for its whole life, not just while the picker is
+    // up: swapping host the moment a workflow is tapped would slide a sheet in over the card the
+    // user just tapped. Null means the preference has not been read yet, so nothing is drawn.
+    val compact = state.compactPicker
+    val asDialog = popup || compact == true
+
     // The sheet has to finish sliding out before the transparent host Activity goes away,
     // otherwise the surface blinks out with the window instead of leaving.
     val close: (RunnerOutcome) -> Unit = { outcome ->
-        if (popup) onClose(outcome)
+        if (asDialog) onClose(outcome)
         else scope.launch { sheetState.hide() }.invokeOnCompletion { onClose(outcome) }
     }
 
@@ -108,7 +114,7 @@ fun RunnerHost(
                     state = state,
                     onQueryChange = viewModel::onQueryChange,
                     onPick = { viewModel.run(it) },
-                    compact = state.compactPicker,
+                    compact = compact == true,
                 )
             }
         } else {
@@ -133,19 +139,27 @@ fun RunnerHost(
         }
     }
 
-    if (popup) {
+    if (compact == null) {
+        // Waiting on the preference. One empty frame, and the host Activity is transparent.
+    } else if (asDialog) {
         Dialog(
             onDismissRequest = { onClose(RunnerOutcome()) },
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                tonalElevation = 3.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
-            ) {
-                Column(Modifier.padding(top = 20.dp)) { content(true) }
+            if (workflow == null && compact) {
+                // The compact picker draws its own panel card; wrapping it in the Surface below
+                // would put a card inside a card.
+                content(true)
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    tonalElevation = 3.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp),
+                ) {
+                    Column(Modifier.padding(top = 20.dp)) { content(true) }
+                }
             }
         }
     } else {

@@ -34,8 +34,12 @@ data class RunnerUiState(
     val sections: List<PickerSection> = emptyList(),
     /** False until the catalog's first emission, so the picker never flashes its empty state. */
     val catalogLoaded: Boolean = false,
-    /** Mirrors UserSettings.compactPicker: the picker without its search box. */
-    val compactPicker: Boolean = false,
+    /**
+     * Mirrors UserSettings.compactPicker. Null until the preference has actually been read — the
+     * host picks a bottom sheet or a floating card from this, and guessing would show one and swap
+     * it for the other a frame later.
+     */
+    val compactPicker: Boolean? = null,
     /** Null while the picker is up; non-null once a workflow is running or has finished. */
     val workflow: Workflow? = null,
     /**
@@ -79,11 +83,8 @@ class RunnerViewModel @Inject constructor(
         // results it is never going to show.
         .onStart { emit(Catalog()) }
 
-    // Started at the default rather than waited on: the picker must draw the instant the sheet
-    // opens, and DataStore's first emission — however quick — is still a frame this cannot spend.
     private val compactPicker = settings.settings
         .map { it.compactPicker }
-        .onStart { emit(false) }
         .distinctUntilChanged()
 
     val uiState: StateFlow<RunnerUiState> =

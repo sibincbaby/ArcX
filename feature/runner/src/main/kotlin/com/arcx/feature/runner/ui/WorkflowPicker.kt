@@ -33,6 +33,10 @@ import com.arcx.core.designsystem.component.SectionHeader
 import com.arcx.core.designsystem.component.StreamingIndicator
 import com.arcx.core.designsystem.component.WorkflowIcon
 import com.arcx.core.model.Workflow
+import com.arcx.core.designsystem.component.PanelListMaxHeight
+import com.arcx.core.designsystem.component.WorkflowPanelCard
+import com.arcx.core.designsystem.component.WorkflowPanelEmpty
+import com.arcx.core.designsystem.component.WorkflowPanelRow
 import com.arcx.feature.runner.RunnerUiState
 
 /**
@@ -47,6 +51,11 @@ internal fun WorkflowPicker(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
 ) {
+    if (compact) {
+        CompactWorkflowPanel(state, onPick, modifier)
+        return
+    }
+
     Column(modifier.imePadding()) {
         Text(
             text = "Run a workflow",
@@ -54,23 +63,19 @@ internal fun WorkflowPicker(
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
         )
 
-        // Left out in compact mode to match the bubble's panel, which cannot have a text field
-        // at all — its window stays non-focusable so the app underneath remains readable.
-        if (!compact) {
-            OutlinedTextField(
-                value = state.query,
-                onValueChange = onQueryChange,
-                placeholder = { Text("Search") },
-                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-            )
+        OutlinedTextField(
+            value = state.query,
+            onValueChange = onQueryChange,
+            placeholder = { Text("Search") },
+            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+        )
 
-            Spacer(Modifier.height(8.dp))
-        }
+        Spacer(Modifier.height(8.dp))
 
         when {
             !state.catalogLoaded -> Box(
@@ -147,6 +152,48 @@ private fun WorkflowRow(workflow: Workflow, onClick: () -> Unit) {
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(16.dp),
             )
+        }
+    }
+}
+
+/**
+ * The same card the bubble shows, for users who asked every entry point to look like it.
+ *
+ * No search box — not because a focused window cannot have one, but because the point of this
+ * option is to match a panel that genuinely cannot. Sections collapse to one flat list for the
+ * same reason: the bubble has no headers.
+ */
+@Composable
+private fun CompactWorkflowPanel(
+    state: RunnerUiState,
+    onPick: (Workflow) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val workflows = state.sections.flatMap { it.workflows }
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        WorkflowPanelCard(title = "Run a workflow", modifier = Modifier.padding(12.dp)) {
+            when {
+                !state.catalogLoaded -> Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(96.dp),
+                    contentAlignment = Alignment.Center,
+                ) { StreamingIndicator() }
+
+                workflows.isEmpty() -> WorkflowPanelEmpty(
+                    "No workflows yet. Build one in ArcX and it will show up here.",
+                )
+
+                else -> LazyColumn(Modifier.heightIn(max = PanelListMaxHeight)) {
+                    items(workflows, key = { it.id }) { workflow ->
+                        WorkflowPanelRow(
+                            emoji = workflow.icon,
+                            label = workflow.name,
+                            onClick = { onPick(workflow) },
+                        )
+                    }
+                }
+            }
         }
     }
 }

@@ -37,7 +37,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.arcx.core.designsystem.component.WorkflowIcon
+import com.arcx.core.designsystem.component.PanelListMaxHeight
+import com.arcx.core.designsystem.component.WorkflowPanelCard
+import com.arcx.core.designsystem.component.WorkflowPanelEmpty
+import com.arcx.core.designsystem.component.WorkflowPanelRow
 import com.arcx.core.model.Workflow
 import com.arcx.integration.entrypoints.R
 
@@ -110,70 +113,33 @@ internal fun BubblePanel(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Surface(
+        WorkflowPanelCard(
+            title = stringResource(R.string.arcx_bubble_title),
+            // The card is a click target of its own, so taps inside it must not reach the scrim
+            // behind and collapse the bubble mid-selection.
             modifier = Modifier
                 .padding(24.dp)
-                .widthIn(max = 340.dp)
-                .fillMaxWidth()
-                // The panel is a click target of its own, so taps inside it must not reach the
-                // scrim behind and collapse the bubble mid-selection.
                 .clickable(indication = null, interactionSource = null, onClick = {}),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            shadowElevation = 12.dp,
-            tonalElevation = 3.dp,
         ) {
-            Column(Modifier.padding(vertical = 12.dp)) {
-                Text(
-                    text = stringResource(R.string.arcx_bubble_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                )
-
-                if (workflows.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.arcx_bubble_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                    )
-                } else {
-                    LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                        items(workflows, key = { it.id }) { workflow ->
-                            BubbleRow(
-                                emoji = workflow.icon,
-                                label = workflow.name,
-                                onClick = { onWorkflow(workflow) },
-                            )
-                        }
+            if (workflows.isEmpty()) {
+                WorkflowPanelEmpty(stringResource(R.string.arcx_bubble_empty))
+            } else {
+                LazyColumn(Modifier.heightIn(max = PanelListMaxHeight)) {
+                    items(workflows, key = { it.id }) { workflow ->
+                        WorkflowPanelRow(
+                            emoji = workflow.icon,
+                            label = workflow.name,
+                            onClick = { onWorkflow(workflow) },
+                        )
                     }
                 }
-
-                BubbleRow(emoji = "⋯", label = stringResource(R.string.arcx_bubble_more), onClick = onMore)
             }
-        }
-    }
-}
 
-@Composable
-private fun BubbleRow(emoji: String, label: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Start,
-    ) {
-        WorkflowIcon(emoji = emoji, size = 40.dp)
-        Spacer(Modifier.width(14.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.clip(RoundedCornerShape(4.dp)),
-        )
+            WorkflowPanelRow(
+                emoji = "⋯",
+                label = stringResource(R.string.arcx_bubble_more),
+                onClick = onMore,
+            )
+        }
     }
 }
