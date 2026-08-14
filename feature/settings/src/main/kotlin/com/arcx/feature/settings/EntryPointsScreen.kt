@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Accessibility
 import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.PictureInPictureAlt
@@ -59,9 +60,11 @@ internal fun EntryPointsScreen(
     screenReadingEnabled: Boolean,
     launcherIconEnabled: Boolean,
     accessibilityButtonAssigned: Boolean,
+    canAddQuickTile: Boolean,
     onBack: () -> Unit,
     onBubbleEnabledChange: (Boolean) -> Unit,
     onLauncherIconChange: (Boolean) -> Unit,
+    onAddQuickTile: () -> Unit,
     onOpenOverlaySettings: () -> Unit,
     onOpenScreenReadingSettings: () -> Unit,
 ) {
@@ -169,11 +172,26 @@ internal fun EntryPointsScreen(
                     checked = launcherIconEnabled,
                     onCheckedChange = onLauncherIconChange,
                 )
+                SettingsRow(
+                    title = "Quick Settings tile",
+                    subtitle = if (canAddQuickTile) {
+                        "Sits with Wi-Fi and Bluetooth, so you can swipe down from any screen — " +
+                            "even the lock screen — and open your workflows."
+                    } else {
+                        "Swipe down twice, tap Edit, and drag the ArcX tile in. It then works " +
+                            "from any screen, even the lock screen."
+                    },
+                    icon = Icons.Outlined.Dashboard,
+                    trailing = {
+                        if (canAddQuickTile) {
+                            TextButton(onClick = onAddQuickTile) { Text("Add") }
+                        }
+                    },
+                )
             }
             SettingsNote(
-                "Two more ways in are always available and need no setup: the ArcX tile, which " +
-                    "you add once from the panel at the top of your screen, and holding down the " +
-                    "ArcX icon for \"Actions\".",
+                "One more way in needs no setup at all: hold down the ArcX icon and pick " +
+                    "\"Actions\".",
             )
 
             SectionHeader("Screen reading")

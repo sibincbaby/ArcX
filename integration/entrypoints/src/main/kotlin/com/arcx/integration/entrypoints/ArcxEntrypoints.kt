@@ -3,16 +3,20 @@ package com.arcx.integration.entrypoints
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.app.StatusBarManager
 import android.content.pm.PackageManager
+import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.annotation.RequiresApi
 import androidx.glance.appwidget.updateAll
 import com.arcx.core.domain.capture.SystemSurfaces
 import com.arcx.integration.entrypoints.accessibility.ArcxAccessibility
 import com.arcx.integration.entrypoints.overlay.OverlayPermission
 import com.arcx.integration.entrypoints.overlay.OverlayService
+import com.arcx.integration.entrypoints.tile.ArcxTileService
 import com.arcx.integration.entrypoints.widget.FavoritesWidget
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -93,6 +97,32 @@ class ArcxEntrypoints @Inject constructor(
 
     override fun isAccessibilityButtonAssigned(): Boolean =
         ArcxAccessibility.isButtonAssigned(context)
+
+    override fun canAddQuickTile(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+
+    override fun requestAddQuickTile() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) addQuickTile()
+    }
+
+    /**
+     * The system owns the dialog and the outcome — it will refuse if the tile is already there, or
+     * if the user has turned the prompt down often enough — so there is nothing useful to do with
+     * the result callback that the dialog has not already told the user.
+     */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun addQuickTile() {
+        val statusBar = context.getSystemService(StatusBarManager::class.java) ?: return
+        runCatching {
+            statusBar.requestAddTileService(
+                ComponentName(context, ArcxTileService::class.java),
+                context.getString(R.string.arcx_tile_label),
+                Icon.createWithResource(context, R.drawable.ic_arcx_spark),
+                { it.run() },
+                { },
+            )
+        }
+    }
 
     private fun actionsAlias(): ComponentName =
         ComponentName(context.packageName, ArcxDeepLinks.ACTIONS_ALIAS)

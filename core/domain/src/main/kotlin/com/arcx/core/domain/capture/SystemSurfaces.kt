@@ -50,4 +50,14 @@ interface SystemSurfaces {
      * Assigned in system Settings like every other accessibility choice, so this only reports.
      */
     fun isAccessibilityButtonAssigned(): Boolean
+
+    /**
+     * The Quick Settings tile. It has always been installable, but only by pulling the shade down,
+     * finding the edit button and scrolling a list of unfamiliar tiles — so in practice nobody
+     * found it. Android 13 added a system prompt that does it in one tap; below that there is no
+     * API and [canAddQuickTile] is false, which is the screen's cue to explain the manual route
+     * instead of offering a button that cannot work.
+     */
+    fun canAddQuickTile(): Boolean
+    fun requestAddQuickTile()
 }

@@ -49,6 +49,8 @@ data class SurfacePermissions(
     /** The separate "ArcX Actions" launcher icon; on unless the user has switched it off. */
     val launcherIconEnabled: Boolean = true,
     val accessibilityButtonAssigned: Boolean = false,
+    /** False below Android 13, where the tile can only be added by hand from the shade. */
+    val canAddQuickTile: Boolean = false,
 )
 
 data class SettingsUiState(
@@ -113,6 +115,7 @@ class SettingsViewModel @Inject constructor(
             hasAutostartScreen = surfaces.autostartIntent() != null,
             launcherIconEnabled = surfaces.isLauncherIconEnabled(),
             accessibilityButtonAssigned = surfaces.isAccessibilityButtonAssigned(),
+            canAddQuickTile = surfaces.canAddQuickTile(),
         )
         if (bubbleRequested && permissions.value.overlayGranted) {
             bubbleRequested = false
@@ -142,6 +145,8 @@ class SettingsViewModel @Inject constructor(
         surfaces.setLauncherIconEnabled(enabled)
         permissions.value = permissions.value.copy(launcherIconEnabled = enabled)
     }
+
+    fun onAddQuickTile() = surfaces.requestAddQuickTile()
 
     fun overlaySettingsIntent(): Intent = surfaces.overlaySettingsIntent()
 
