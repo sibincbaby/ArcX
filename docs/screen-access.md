@@ -268,11 +268,16 @@ The shortcut half is done (§4). The rest resolves to a fork:
   (`screenshot supplied by the caller is the one stored in history`), and re-verified by pulling the
   file again.
 
+**Verified on device (SM-S938B, Android 16), after `a46da5b`:**
+- **The bubble path after `689cd83`**, which this section used to list as unverified — the overlay
+  was down on the Redmi at the time (MIUI autostart after a reinstall, not a code fault, so the one
+  path that always worked was the one left unconfirmed). It runs on this Samsung: with ArcX's theme
+  preference set to **Light** while the system was in dark mode, the bubble panel rendered light.
+  That is what deleting the `OverlayTheme` fork was for — the fork hardcoded `isSystemInDarkTheme()`,
+  so it could not have produced that, and the panel now takes `themeMode` from settings like the
+  rest of the app. The §3a second-grab fallback was not separately exercised.
+
 **Not verified — do this first next session:**
-- **The bubble path after `689cd83`.** The overlay was not running on the Redmi (MIUI autostart
-  after a reinstall), so the one path that always worked is the one left unconfirmed. Reasoning says
-  it is fine — the second grab hits the platform interval, returns null, and falls back to the frame
-  the bubble already took — but that is reasoning, not evidence.
 - The accessibility-button capture path end to end. Never tested; the device dropped off USB before
   it could be. Less important now that it is redundant (§3a).
 - The "switched on but not running" message (§3c). Hard to induce deliberately — `force-stop` on

@@ -1,8 +1,14 @@
 # Sharing a workflow as a file — current state, what breaks, and the canonical shape
 
-> **Status: design only.** Nothing in this document has been implemented except **item 0** of the
-> checklist in §7 (the `coerceInputValues` fix and its tests), which shipped with this file.
-> Everything else is a proposal waiting on the decisions in §8.
+> **Status: partly built.** Items **0, 1 and 2** of the checklist in §7 have shipped — the
+> `coerceInputValues` fix, the single declaration of the format, and `WorkflowBundleRepository`
+> carrying the sanitisation table of §4.5. Items **3–6** are still proposals waiting on the
+> decisions in §8, and the import review sheet (item 3) is the one that makes this feature safe.
+>
+> **§1 and §2 describe the tree before items 1–2, and are kept as the reasoning that produced
+> them.** The two divergent declarations they anatomise no longer exist, and every citation they
+> make into `feature/discover/.../WorkflowBundle.kt` points at a file that has been deleted. §6 is
+> the shape that was actually built; read it first if you want the current state.
 
 Everything below was read from the tree at `main` / `5fd94ed`. Every claim carries a `file:line`.
 Where the brief's premise turned out to be wrong, I say so.
@@ -31,6 +37,11 @@ Where the brief's premise turned out to be wrong, I say so.
 ## 1. The format as it exists today
 
 ### 1.1 The two declarations
+
+> **Historic.** Item 1 collapsed these into one: `WorkflowSpec` is now
+> `core/model/.../WorkflowSpec.kt`, and the envelope, the `Json` and all three mappers are
+> `core/data/.../bundle/WorkflowBundle.kt`. `:feature:discover` declares and parses nothing and no
+> longer depends on kotlinx-serialization. The table below is *why*, not *what*.
 
 | | `:core:data` | `:feature:discover` |
 |---|---|---|
@@ -157,6 +168,10 @@ a selection with no matching row). Not dangerous, quietly wrong.
 
 **Recommendation:** strip on import, exactly as export already does.
 
+> **Done (item 2).** `sanitisedForImport()` nulls `providerId` on every path in, so the dangling
+> reference and the editor showing a provider that does not exist are both gone. The rest of this
+> section is the reasoning, and the `ProviderRepositoryImpl` fall-through it describes is unchanged.
+
 ### 2.2 `model` — a wasted round trip and an unhelpful error
 
 `ExecuteWorkflowUseCase.kt:65`: `val model = workflow.model ?: config.defaultModel`. The string is
@@ -205,6 +220,12 @@ So:
 a missing/blank icon to it; leave any non-empty value untouched (emoji included). Optionally cap
 icon length so a 500-char "icon" can't be drawn as text.
 
+> **Done (item 1), except the length cap.** There is one `DEFAULT_WORKFLOW_ICON` literal, in
+> `:core:model` and re-exported from `:core:designsystem` so existing imports still resolve, and
+> `sanitisedForImport()` coerces a blank icon to it while leaving any non-empty value — emoji
+> included — completely alone. The unknown-key and long-string cases in the bullets above are
+> unchanged; nothing caps icon length.
+
 ### 2.4 There are no id collisions — the collision is on `name`
 
 `WorkflowSpec` has no `id` field (`StarterWorkflows.kt:27-43`), by design (`:14-19`). Import sets
@@ -242,6 +263,12 @@ product decision (§8).
 | `name`, `prompt`, `systemPrompt` | Safe in content, **unbounded in size**. No length check anywhere; only blankness is checked (`DiscoverViewModel.kt:183`). A 50MB prompt goes into Room and then into every list query. |
 | `temperature` | Safe. |
 | `category`, `input`, `output` | Safe as data — but see §4.3 for the *combinations*. |
+
+> **The five "strip" verdicts are enforced as of item 2** — `sanitisedForImport()`, once, in the
+> module that owns the format. The consolidation this table warned about ("any future consolidation
+> that loses the discover override reopens this") is the consolidation that happened: it kept two
+> mappers named as opposites, `toWorkflowAsStarter` and `toWorkflowAsImport`, and a test fails if
+> anyone collapses them. `maxTokens` and the three size limits are still unbounded, as above.
 
 ---
 
@@ -459,9 +486,20 @@ Then: **Import** / **Cancel**.
 | **Product decision** | `model` — strip, keep, or show as a suggestion (§8) |
 | **Surface in UI** | the capability sentence, the output sentence, both prompts in full, what was stripped, name collisions, coerced values, newer-version banner |
 
-Everything in the "strip" row except `sortOrder` is already done for the Discover path
-(`WorkflowBundle.kt:64-70`). The work is to make it a property of the format's owner rather than of
-one mapper in one feature module, so it cannot be lost.
+**The "strip" row is done, as item 2.** It is `WorkflowSpec.sanitisedForImport()` in
+`core/data/.../bundle/WorkflowBundle.kt` — a property of the format's owner rather than of one mapper
+in one feature module — applied by the repository on every path in, imported file and bundled gallery
+alike, and again by `toWorkflowAsImport` as the last thing between a file and Room.
+
+Two of the five were genuinely new rather than moved: `sortOrder` was sanitised nowhere, and
+`providerId` was copied straight through on import (§2.1). An earlier version of this paragraph said
+only `sortOrder` was missing, which was one short.
+
+One visible consequence: gallery installs share the import mapper, so a gallery entry now arrives at
+`sortOrder` 0 instead of carrying its position in `gallery.json`. That is the rule applied
+consistently; exempting the gallery would mean weakening the mapper.
+
+"Clamp", and whether `model` survives at all, are deliberately untouched — §8, not refactoring.
 
 ---
 
@@ -594,6 +632,10 @@ Every feature module already gets `:core:model` for free via `AndroidFeatureConv
 `add("implementation", project(":core:model"))`), so `:feature:discover` needs no new dependency.
 Its `build.gradle.kts` can drop `libs.kotlinx.serialization.json` once it no longer parses anything.
 
+**Built as described.** The stability caveat held when checked rather than assumed: a Compose report
+against the new tree returns `stable val selected: WorkflowSpec?`. `:feature:discover` dropped
+kotlinx-serialization, and its `build.gradle.kts` carries a comment saying why it must stay dropped.
+
 ### 6.2 Who owns import and export
 
 A `WorkflowBundleRepository`, interface in `:core:domain` alongside the other four
@@ -626,6 +668,21 @@ Two things this buys:
 
 Sanitisation (the §4.5 table) lives in the impl, once, applied on every path in.
 
+**Built, with four differences from the sketch above**, all of them because the parts that needed
+items 3–5 were left for items 3–5:
+
+- `read` returns `List<WorkflowSpec>`, not a `BundleRead`. There are no warnings or version notice
+  to carry yet — those are items 3 and 4 — so the richer return type would have been an empty box.
+- `install` returns `List<Workflow>` rather than `Int`, because the caller that installs exactly one
+  gallery entry wants to open it in the editor.
+- `write` takes `List<Workflow>`, not `List<WorkflowSpec>`, which keeps `Workflow → WorkflowSpec` —
+  where the export strips `providerId` and `isBuiltIn` — inside the module that owns the format.
+- No `shareable()`. It belongs with the `FileProvider` in item 5 and nothing calls it before then.
+
+The two things it was for both landed: `read` and `install` are separate calls with nothing between
+them yet — the gap exists so the review sheet has somewhere to go — and `DiscoverViewModel` no longer
+injects `Context` or touches `contentResolver`.
+
 ### 6.3 Migration path that does not break the two asset files
 
 The two bundled assets are the binding constraint. Rules:
@@ -647,7 +704,7 @@ The two bundled assets are the binding constraint. Rules:
    refactor that would reopen §2.5's `isBuiltIn` hole.
 5. `readStarterWorkflows(context)` stays in `:core:data` — it needs `Context` — and is the model for
    a `readGallery(context)` that replaces `DiscoverViewModel.kt:107-122`.
-6. The format had **zero tests** before item 0. `core/data/src/test/kotlin/.../seed/WorkflowBundleTest.kt`
+6. The format had **zero tests** before item 0. `core/data/src/test/kotlin/.../bundle/WorkflowBundleTest.kt`
    is now the place to extend as the format changes.
 
 ---
@@ -659,17 +716,17 @@ Effort is one engineer, hands-on, excluding review.
 | # | Step | Effort | Status |
 |---|---|---|---|
 | **0** | **`coerceInputValues = true` on both decoders** + corrected comments + first tests for the format | **30 min** | ✅ **Done.** The only item here that fixed a bug in today's build. |
-| 1 | Move `WorkflowSpec` → `:core:model`; `WorkflowBundle` + `Json` → `:core:data`. Delete the discover copies. Single `icon` default. Rename the two mappers. | 1–2 h | Blocked on nothing; safe refactor |
-| 2 | `WorkflowBundleRepository` in `:core:domain` + impl in `:core:data`. Move `import`/`export`/gallery-read out of `DiscoverViewModel`; drop its `@ApplicationContext Context`. Add sanitisation (§4.5). | 2–3 h | Split `read` from `install` |
+| 1 | Move `WorkflowSpec` → `:core:model`; `WorkflowBundle` + `Json` → `:core:data`. Delete the discover copies. Single `icon` default. Rename the two mappers. | 1–2 h | ✅ **Done.** `toWorkflowAsStarter` / `toWorkflowAsImport`, named as opposites, with a test that fails if anyone collapses them. |
+| 2 | `WorkflowBundleRepository` in `:core:domain` + impl in `:core:data`. Move `import`/`export`/gallery-read out of `DiscoverViewModel`; drop its `@ApplicationContext Context`. Add sanitisation (§4.5). | 2–3 h | ✅ **Done**, with the four interface differences in §6.2. Tests 79 → 89; the ten new ones assert what a bundle must *not* be able to do. |
 | 3 | **Import review sheet.** Extend `GalleryDetailSheet` (`DiscoverRoute.kt:519`) with the capability sentence (from `input` **+** `PromptTemplate.variablesIn`), the output sentence, stripped-fields line, collisions, per-workflow checkboxes. | 3–4 h | The step that makes this feature safe. Do not ship 5–6 without it. |
 | 4 | `kind` + `version` actually written (`encodeDefaults`), tolerant read, newer-version banner. | 2 h | Verify both assets still parse |
 | 5 | FileProvider + `res/xml/file_paths.xml` + `shareable()` on `SystemSurfaces` + "Share" in the library row menu. Rename export to `.arcx.json`. | 3–4 h | |
 | 6 | Receiving: `MainActivity` intent filters, `onCreate`/`onNewIntent` handling, route to Discover's review sheet. | 2–3 h | **Needs a real device.** File managers and chat apps disagree about mime types, and the feature is judged entirely on whether tapping the file in Files works. |
 
-**Remaining: ~13–19 hours.** Steps 1–3 are the safety-critical half and are worth shipping before
-5–6 exist.
+**Remaining: ~10–13 hours**, items 3–6. Step 3 is the safety-critical one left and is worth shipping
+before 5–6 exist.
 
-Sequencing note: 1 and 2 are pure refactors with no user-visible change. 3 is the gate. 5 and 6 are
+Sequencing note: 1 and 2 were pure refactors with no user-visible change. 3 is the gate. 5 and 6 are
 the actual feature and are the least risky code in the list — which is why it is worth resisting the
 urge to do them first.
 

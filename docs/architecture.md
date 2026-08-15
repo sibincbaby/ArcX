@@ -3,11 +3,11 @@
 Written for whoever — human or agent — picks this up next. `CLAUDE.md` is the short operational
 version; this is the reasoning behind it, including the parts that went wrong.
 
-The body of this document was written against commit `6853f1c`. HEAD is now `bd70585`, seven commits
-later, and the document has **not** been re-audited against them as a whole — individual claims have
-been corrected in place as they were found wrong, but treat anything not marked as verified as
-dating from `6853f1c`. Where a claim was verified on hardware, it says so. Where it was not, it says
-that too.
+The body of this document was written against commit `6853f1c`. HEAD is now `1a01198`, sixteen
+commits later, and the document has **not** been re-audited against them as a whole — individual
+claims have been corrected in place as they were found wrong, but treat anything not marked as
+verified as dating from `6853f1c`. Where a claim was verified on hardware, it says so. Where it was
+not, it says that too.
 
 ---
 
@@ -51,7 +51,7 @@ thing that may actually need one.
 
 ## 2. What exists now
 
-16 commits. 14 modules, ~125 Kotlin files, 63 unit tests. Verified throughout on a Galaxy S25 Ultra
+32 commits. 14 modules, ~149 Kotlin files, 89 unit tests. Verified throughout on a Galaxy S25 Ultra
 (SM-S938B, Android 16) and earlier on a Xiaomi device running MIUI.
 
 ### Entry points, all landing in one place
@@ -106,10 +106,13 @@ looked unimplemented for so long.
 entry point → RunnerActivity (or bubble panel) → ExecuteWorkflowUseCase → AiProvider → output
 ```
 
-`ExecuteWorkflowUseCase` is the only path. It resolves the provider and key, resolves the input text,
-captures a screenshot when the workflow's input is `SCREENSHOT`, renders the prompt, streams, and
-records history. Adding a second path is how the error handling and the history rules start to
-disagree with themselves.
+`ExecuteWorkflowUseCase` is the only path. It resolves the provider and key, captures a screenshot
+when the workflow's input is `SCREENSHOT`, renders the prompt and streams it. Two of the jobs it used
+to do personally now sit in classes of their own — `ResolveWorkflowInputUseCase` (the input-text
+fallback chain and the placeholder map) and `RecordRunUseCase` (the history row and its screenshot,
+written together under one id) — but both are its implementation details and nothing else injects
+either. Adding a second path is how the error handling and the history rules start to disagree with
+themselves.
 
 Input resolution is worth knowing: a bubble/shortcut/tile launch carries **no text**, so for
 selection- and share-sourced workflows it falls back to the clipboard, then to screen text. Without
@@ -126,6 +129,38 @@ that, one-tap launching would send an empty prompt.
 
 Keys never enter Room. Confirmed empirically by grepping every file in app storage for the plaintext
 key: only base64 ciphertext was present, and the auth header logs redacted.
+
+### Four files that were split, and how the splits were checked
+
+Four files had grown past the point where their own shape was legible. Each was split along a seam it
+already declared, and none of it changes a rule above. The first three are pure movement; only the
+fourth changes behaviour, and deliberately — see `workflow-sharing.md` §4.5.
+
+| Was | Became | The seam |
+|---|---|---|
+| `ExecuteWorkflowUseCase`, 351 lines, eight collaborators | 218 + `ResolveWorkflowInputUseCase` (113) + `RecordRunUseCase` (75) | Five things, two of which answer "what does this run act on" and "what does it leave behind" |
+| `WorkflowEditorRoute.kt`, 1,244 lines, 22 composables | 424 + `TriggerStep` (150) + `PromptStep` (391) + `OutputStep` (370) | The file already had `STEP_TRIGGER`, `STEP_PROMPT`, `STEP_OUTPUT` |
+| `ArcxAccessibilityService`, 650 lines | 418 + `ScreenTextReader` (159) + `ScreenFrameEncoder` (94) | Three jobs: being a bound service, walking a node tree, encoding pixels |
+| `WorkflowSpec` + `WorkflowBundle`, declared twice | `WorkflowSpec` → `:core:model`; envelope, `Json` and mappers → `:core:data/bundle/`; both behind `WorkflowBundleRepository` | Two declarations with different `icon` defaults, so the same file imported through Discover stored the emoji `MIGRATION_2_3` existed to remove |
+
+**Each split was verified by normalised diff rather than by eye** — strip package, import and blank
+lines from the original and from the new files, sort both, diff. The editor split came back 1,072
+lines against 1,072, the only differences being five signatures widened from `private` to `internal`.
+The service split came back six removals, seventeen additions and one change, every one accounted for
+as a moved signature, a folded statement or new KDoc — and not one comment line different.
+
+That last part is the reason the method was worth the trouble. The comments in these files *are* the
+record of things measured rather than reasoned — the `typeWindowContentChanged` battery paragraph,
+the clipboard-then-screen fallback, the note that Chrome yields 131 characters of toolbar, both TTLs
+— and a split done by eye is exactly how they get quietly dropped. Faithfulness was the requirement,
+not tidiness: five things found wrong along the way were deliberately left alone, because a split is
+the wrong place to change behaviour.
+
+Separately, and from the other direction: `:core:designsystem` gained the middle layer it never had —
+`Spacing`, `Shape` (finally wired into `MaterialTheme`), `ArcxListRow`, `ArcxSearchField`, `ArcxPill`,
+`ArcxAction`, `NoticeCard`, `LoadingState` — and every screen moved onto it. Measured before: 492 `.dp`
+literals across the feature modules at 49 distinct values, 41% of them off any 4dp grid, and 14 corner
+radii across ~50 sites with `MaterialTheme.shapes` never set and never read. After: 182.
 
 ---
 

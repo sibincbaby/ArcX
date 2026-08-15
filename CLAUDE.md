@@ -16,15 +16,15 @@ its evidence — is in `docs/architecture.md`. Read it before any structural cha
 - `docs/benchmarking.md` — how to measure startup and frame timing, and the current baseline.
 - `docs/workflow-sharing.md` — the `.json` bundle format, what breaks when a file leaves the
   device it was made on, and the trust rules for importing someone else's prompt. Read it before
-  touching `WorkflowBundle`/`WorkflowSpec`, import/export, or the bundled asset files. **Design
-  only** — nothing in it is built except the enum-coercion fix.
+  touching `WorkflowBundle`/`WorkflowSpec`, import/export, or the bundled asset files. **Partly
+  built** — its §7 items 0–2 shipped; 3–6 (review sheet, versioning, share sheet) are still design.
 
 ---
 
 ## Commands
 
 ```bash
-./gradlew testDebugUnitTest          # 79 unit tests, all modules
+./gradlew testDebugUnitTest          # 89 unit tests, all modules
 ./gradlew installDebug               # build + install on the attached device
 ./gradlew :core:domain:testDebugUnitTest
 adb logcat -d | grep -E "arcx|AndroidRuntime"
@@ -101,16 +101,16 @@ Traps that have already cost time:
 
 ## Modules
 
-14 modules, ~125 Kotlin files. Dependencies point inward; nothing in `core/` knows about `feature/`.
+14 modules, ~149 Kotlin files. Dependencies point inward; nothing in `core/` knows about `feature/`.
 
 ```
 :app                     Application, MainActivity, RunnerActivity, the merged manifest
-:core:model              Pure Kotlin contracts. No Android imports.
+:core:model              Pure Kotlin contracts, WorkflowSpec included. No Android imports.
 :core:common             Dispatchers, PromptTemplate, TimeSource
-:core:designsystem       Theme + shared composables (WorkflowIcon, WorkflowPanel*)
-:core:data               Room, DataStore, KeystoreVault, repository impls
+:core:designsystem       Theme, Spacing/Shape tokens, shared components — see below
+:core:data               Room, DataStore, KeystoreVault, bundle/ (envelope + Json), repository impls
 :core:ai                 AiProvider abstraction, Gemini, SSE parsing, registry
-:core:domain             Repository interfaces, ports, use cases
+:core:domain             Repository interfaces, ports, use cases (Execute/ResolveInput/RecordRun, …)
 :feature:{home,workflow,runner,history,settings,discover}
 :integration:entrypoints Accessibility service, bubble, widget, tile, shortcuts
 ```
@@ -131,6 +131,20 @@ so tab routes are free to be renamed.
 kinds by asking whether both ends of the move are tabs. Do not fall back to navigation-compose's
 defaults — they are a single 700ms crossfade for every destination, which measured ~500ms of
 visible ghosting on device and made a push look identical to a tab switch.
+
+## The design system has a middle layer — use it
+
+Between the theme and the screens, because without one five screens had each rebuilt the same list
+row and drifted. Feature-module `.dp` literals went 492 → 182 when every screen moved onto it.
+
+- **Tokens:** `Spacing` (Xs…Xxxl on a 4dp grid, plus `Gutter` = 20dp) and `ArcXCorner`/`ArcXShapes`
+  (Chip · Control · Card · Panel), wired into `MaterialTheme.shapes` by `ArcXTheme`.
+- **Components:** `ArcxListRow`, `ArcxSearchField`, `ArcxPill`, `ArcxAction`, `NoticeCard`,
+  `LoadingState`, `EmptyState`, `SectionHeader`, `WorkflowPanel*`, `WorkflowIcon`.
+
+**Read `MaterialTheme.shapes` and the `Spacing` tokens instead of hardcoding a `.dp`, and reach for
+the shared row/field/pill before writing a new one.** Minimum touch targets and `Role.Button` live in
+the primitives, so a hand-rolled clickable loses both silently.
 
 ---
 
@@ -181,6 +195,11 @@ re-emits, whether or not the value changed.
 
 Every entry point ends in `ExecuteWorkflowUseCase`. Provider resolution, variable expansion,
 history and error mapping exist exactly once. **Do not add a second path.**
+
+`ResolveWorkflowInputUseCase` and `RecordRunUseCase` are **implementation details of
+`ExecuteWorkflowUseCase`** — two of its jobs lifted out to keep it readable, not to be reused. Do
+not inject either anywhere else: an entry point resolving its own input, or writing its own history
+row, is precisely the second path the rule above exists to prevent.
 
 `ExecuteWorkflowUseCase` resolves **only the placeholders the prompt actually names**. Two of them
 cost real time — `{{clipboard}}` is an IPC, `{{screen_text}}` is an accessibility snapshot — and
