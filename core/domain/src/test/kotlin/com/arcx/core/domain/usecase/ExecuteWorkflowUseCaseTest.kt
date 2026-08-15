@@ -57,16 +57,19 @@ class ExecuteWorkflowUseCaseTest {
         screen: FakeScreenContextProvider = FakeScreenContextProvider(available = true, text = "on screen"),
         screenshots: FakeScreenshotStore = FakeScreenshotStore(),
         clipboard: FakeClipboard = FakeClipboard("clip"),
-    ) = ExecuteWorkflowUseCase(
-        providers = providers,
-        history = history,
-        settings = settings,
-        registry = FakeRegistry(provider),
-        screen = screen,
-        screenshots = screenshots,
-        clipboard = clipboard,
-        time = FakeTimeSource(),
-    )
+    ): ExecuteWorkflowUseCase {
+        // The two collaborators are implementation details of the use case, so the wiring lives
+        // here rather than in a fake: one clock, shared, exactly as the graph hands it out.
+        val time = FakeTimeSource()
+        return ExecuteWorkflowUseCase(
+            providers = providers,
+            registry = FakeRegistry(provider),
+            screen = screen,
+            resolveInput = ResolveWorkflowInputUseCase(screen, clipboard, time),
+            recordRun = RecordRunUseCase(history, screenshots, settings, time),
+            time = time,
+        )
+    }
 
     @Test
     fun `happy path streams accumulated text then succeeds`() = runTest {

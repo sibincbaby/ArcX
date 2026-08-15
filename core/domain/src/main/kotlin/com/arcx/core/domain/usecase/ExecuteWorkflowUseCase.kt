@@ -1,23 +1,17 @@
 package com.arcx.core.domain.usecase
 
 import com.arcx.core.common.prompt.PromptTemplate
-import com.arcx.core.common.prompt.PromptVariable
 import com.arcx.core.common.time.TimeSource
 import com.arcx.core.domain.ai.AiProviderRegistry
-import com.arcx.core.domain.capture.ClipboardAccess
 import com.arcx.core.domain.capture.ScreenContextProvider
-import com.arcx.core.domain.capture.ScreenshotStore
 import com.arcx.core.domain.execution.ExecutionState
-import com.arcx.core.domain.repository.HistoryRepository
 import com.arcx.core.domain.repository.ProviderRepository
-import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.model.AiChunk
 import com.arcx.core.model.AiError
 import com.arcx.core.model.AiRequest
 import com.arcx.core.model.Attachment
 import com.arcx.core.model.InputSource
 import com.arcx.core.model.ProviderConfig
-import com.arcx.core.model.RunRecord
 import com.arcx.core.model.RunStatus
 import com.arcx.core.model.Workflow
 import com.arcx.core.model.WorkflowInput
@@ -25,24 +19,23 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.UUID
 import javax.inject.Inject
 
 /**
  * The one execution path. Share sheet, text selection, bubble, widget and shortcut all end up
  * here, so provider resolution, variable expansion, history and error mapping only exist once.
+ *
+ * [ResolveWorkflowInputUseCase] and [RecordRunUseCase] are two halves of this class that were
+ * lifted out to keep it readable; they are its implementation details and are documented as such.
+ * Nothing else may hold either of them — an entry point that resolved its own input or wrote its
+ * own history row would be the second path this class exists to prevent.
  */
 class ExecuteWorkflowUseCase @Inject constructor(
     private val providers: ProviderRepository,
-    private val history: HistoryRepository,
-    private val settings: SettingsRepository,
     private val registry: AiProviderRegistry,
     private val screen: ScreenContextProvider,
-    private val screenshots: ScreenshotStore,
-    private val clipboard: ClipboardAccess,
+    private val resolveInput: ResolveWorkflowInputUseCase,
+    private val recordRun: RecordRunUseCase,
     private val time: TimeSource,
 ) {
 
@@ -88,7 +81,7 @@ class ExecuteWorkflowUseCase @Inject constructor(
             return@flow
         }
 
-        val inputText = resolveText(workflow, input)
+        val inputText = resolveInput.text(workflow, input)
 
         // A screenshot workflow's input is the picture. Only a launch that brought no image of its
         // own asks for one — a shared photo is what the user chose to act on, and overriding it
@@ -139,7 +132,7 @@ class ExecuteWorkflowUseCase @Inject constructor(
         // for {{screen_text}} and read the clipboard, before a single byte was sent.
         val used = PromptTemplate.variablesIn(workflow.prompt) +
             PromptTemplate.variablesIn(workflow.systemPrompt.orEmpty())
-        val vars = variables(used.distinct(), inputText, input)
+        val vars = resolveInput.variables(used.distinct(), inputText, input)
         val request = AiRequest(
             model = model,
             userPrompt = PromptTemplate.render(workflow.prompt, vars),
@@ -170,7 +163,7 @@ class ExecuteWorkflowUseCase @Inject constructor(
             )
         } else {
             val text = answer.toString()
-            record(
+            recordRun(
                 workflow, config, model, startedAt, inputText,
                 RunStatus.SUCCESS, text, null, storedImage, recordHistory,
             )
@@ -178,82 +171,9 @@ class ExecuteWorkflowUseCase @Inject constructor(
         }
     }
 
-    /**
-     * A shortcut, widget, tile or bubble launch carries only a workflow id — no text. Falling
-     * back to the clipboard is what makes one-tap launching useful at all: copy something,
-     * then tap. Without it every such launch would send an empty prompt to the provider.
-     */
-    private suspend fun resolveText(workflow: Workflow, input: WorkflowInput): String {
-        input.text?.takeIf { it.isNotBlank() }?.let { return it }
-        return when (workflow.input) {
-            InputSource.SCREEN_TEXT -> readScreenText()
-
-            // Launched from the bubble, a shortcut or a tile there is no selection to read, so
-            // the content has to come from somewhere. The clipboard first, because copying is
-            // deliberate and beats guessing; then the screen, because "act on what I am looking
-            // at" is the entire point of tapping the bubble while reading something. Without
-            // this the bubble refuses to work on the article filling the screen behind it.
-            InputSource.SELECTED_TEXT,
-            InputSource.SHARE_INTENT,
-            -> readClipboard().ifBlank { readScreenText() }
-
-            // These two name their source, so silently substituting another would be a lie.
-            InputSource.CLIPBOARD, InputSource.MANUAL -> readClipboard()
-
-            else -> ""
-        }
-    }
-
     /** Sources that are meaningless without text; attachment-based ones are not. */
     private val Workflow.needsText: Boolean
         get() = input in TEXT_SOURCES
-
-    /**
-     * Resolves exactly the placeholders [used] names, and nothing else.
-     *
-     * Two of these are not free — the clipboard is an IPC and screen text is an accessibility
-     * snapshot — and they used to be fetched for every run whether the prompt mentioned them or
-     * not, on the path between the user's tap and the first token. A name this does not know
-     * resolves to an empty string, which is what [PromptTemplate.render] does with an absent
-     * key anyway, so an unknown placeholder behaves exactly as before.
-     */
-    private suspend fun variables(
-        used: List<String>,
-        text: String,
-        input: WorkflowInput,
-    ): Map<String, String> {
-        if (used.isEmpty()) return emptyMap()
-        val moment = Instant.ofEpochMilli(time.nowMillis()).atZone(ZoneId.systemDefault())
-        return used.associateWith { name ->
-            when (name) {
-                PromptVariable.SELECTED_TEXT.name,
-                PromptVariable.INPUT.name,
-                PromptVariable.SHARE_TEXT.name,
-                -> text
-
-                PromptVariable.CLIPBOARD.name -> readClipboard()
-                PromptVariable.SCREEN_TEXT.name -> readScreenText()
-                PromptVariable.CURRENT_APP.name -> currentApp(input)
-                PromptVariable.TODAY.name -> moment.format(DateTimeFormatter.ISO_LOCAL_DATE)
-                PromptVariable.NOW.name -> moment.format(TIME_FORMAT)
-                PromptVariable.SHARE_SUBJECT.name -> input.shareSubject.orEmpty()
-                else -> ""
-            }
-        }
-    }
-
-    /** The accessibility service is optional and may never be granted; missing it is not an error. */
-    private suspend fun readScreenText(): String = try {
-        if (screen.isAvailable()) screen.screenText().orEmpty() else ""
-    } catch (e: Exception) {
-        ""
-    }
-
-    private fun readClipboard(): String = try {
-        clipboard.read().orEmpty()
-    } catch (e: Exception) {
-        ""
-    }
 
     /**
      * Capture is permission-gated and can be revoked between runs, so an unavailable or empty
@@ -264,13 +184,6 @@ class ExecuteWorkflowUseCase @Inject constructor(
     } catch (e: Exception) {
         null
     }
-
-    private fun currentApp(input: WorkflowInput): String =
-        input.sourcePackage ?: try {
-            screen.currentPackage().orEmpty()
-        } catch (e: Exception) {
-            ""
-        }
 
     private suspend fun FlowCollector<ExecutionState>.fail(
         workflow: Workflow,
@@ -283,60 +196,14 @@ class ExecuteWorkflowUseCase @Inject constructor(
         screenshot: ByteArray? = null,
         recordHistory: Boolean = true,
     ) {
-        record(
+        recordRun(
             workflow, config, model, startedAt, inputText,
             RunStatus.FAILED, partial.ifEmpty { null }, error, screenshot, recordHistory,
         )
         emit(ExecutionState.Failed(error))
     }
 
-    private suspend fun record(
-        workflow: Workflow,
-        config: ProviderConfig?,
-        model: String,
-        startedAt: Long,
-        inputText: String,
-        status: RunStatus,
-        output: String?,
-        error: AiError?,
-        screenshot: ByteArray?,
-        recordHistory: Boolean,
-    ) {
-        if (!recordHistory || !settings.current().historyEnabled) return
-        val id = UUID.randomUUID().toString()
-        // Written only once there is a row to point at it, and under that row's id, so clearing
-        // history reaches every image. A file saved for an unrecorded run would be invisible to
-        // History and to "delete all local data" — a leak with no UI left to remove it. Failed
-        // runs keep theirs: seeing what a run acted on is most of why it is worth storing.
-        val screenshotPath = screenshot?.let { screenshots.save(id, it) }
-        history.record(
-            RunRecord(
-                id = id,
-                workflowId = workflow.id,
-                workflowName = workflow.name,
-                workflowIcon = workflow.icon,
-                startedAt = startedAt,
-                durationMs = time.nowMillis() - startedAt,
-                providerLabel = config?.label.orEmpty(),
-                model = model,
-                status = status,
-                // The text actually sent to the provider, not WorkflowInput.text — a bubble,
-                // shortcut or tile launch carries no text of its own and resolves it from the
-                // clipboard or the screen, so recording the raw input left history blank.
-                // Previews only: the key never comes near this object, nor do attachment bytes.
-                // An image-only run has no text to preview, which is fine and expected.
-                inputPreview = inputText.preview(),
-                outputPreview = output?.preview(),
-                error = error?.message,
-                screenshotPath = screenshotPath,
-            ),
-        )
-    }
-
-    private fun String.preview(): String = take(RunRecord.PREVIEW_LIMIT)
-
     private companion object {
-        val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
         const val JPEG = "image/jpeg"
     }
 }

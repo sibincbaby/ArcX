@@ -24,7 +24,7 @@ its evidence — is in `docs/architecture.md`. Read it before any structural cha
 ## Commands
 
 ```bash
-./gradlew testDebugUnitTest          # 63 unit tests, all modules
+./gradlew testDebugUnitTest          # 79 unit tests, all modules
 ./gradlew installDebug               # build + install on the attached device
 ./gradlew :core:domain:testDebugUnitTest
 adb logcat -d | grep -E "arcx|AndroidRuntime"

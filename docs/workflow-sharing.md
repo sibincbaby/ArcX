@@ -63,8 +63,8 @@ onto is `core/model/.../Workflow.kt:10-35`.
 | `providerId` | `String?` | `null` | **`:feature:discover`'s export semantics** (always null) | See §2.1. |
 | `model` | `String?` | `null` | either | See §2.2. |
 | `output` | `OutputTarget` | `BOTTOM_SHEET` | either | 8 values, `Workflow.kt:54-64`. |
-| `temperature` | `Float?` | `null` | either | Straight to `AiRequest` (`ExecuteWorkflowUseCase.kt:148`). |
-| `maxTokens` | `Int?` | `null` | either | Straight to `AiRequest` (`:149`). Unbounded. |
+| `temperature` | `Float?` | `null` | either | Straight to `AiRequest` (`ExecuteWorkflowUseCase.kt:141`). |
+| `maxTokens` | `Int?` | `null` | either | Straight to `AiRequest` (`:142`). Unbounded. |
 | `isPinned` | `Boolean` | `false` | **`:feature:discover`'s import** (force false) | Export keeps it (`WorkflowBundle.kt:90`), import drops it (`:68`). Asymmetric. |
 | `isFavorite` | `Boolean` | `false` | **`:feature:discover`'s import** (force false) | Same asymmetry (`:91` vs `:69`). |
 | `isBuiltIn` | `Boolean` | `false` | **`:feature:discover`** (force false both ways) | `:core:data`'s pass-through (`StarterWorkflows.kt:61`) is correct *for seeding only*. See §2.5. |
@@ -135,7 +135,7 @@ reasoning. Export is already correct.
 
 **What happens when it does not resolve?** Nothing visible. Trace:
 
-- `ExecuteWorkflowUseCase.kt:63` → `providers.resolve(workflow.providerId)`
+- `ExecuteWorkflowUseCase.kt:56` → `providers.resolve(workflow.providerId)`
 - `ProviderRepositoryImpl.kt:27-30`:
   ```kotlin
   override suspend fun resolve(providerId: String?): ProviderConfig? {
@@ -144,7 +144,7 @@ reasoning. Export is already correct.
   }
   ```
   An unknown id falls through to the user's default. **It is not an error and there is no log line.**
-- Only if there is *also* no default does `config == null` and `ExecuteWorkflowUseCase.kt:64-70`
+- Only if there is *also* no default does `config == null` and `ExecuteWorkflowUseCase.kt:57-63`
   emit `AiError.NoProvider` — "No AI provider configured yet" (`Ai.kt:48-49`), which is a
   misleading message for "the file named a provider you don't have".
 
@@ -159,7 +159,7 @@ a selection with no matching row). Not dangerous, quietly wrong.
 
 ### 2.2 `model` — a wasted round trip and an unhelpful error
 
-`ExecuteWorkflowUseCase.kt:72`: `val model = workflow.model ?: config.defaultModel`. The string is
+`ExecuteWorkflowUseCase.kt:65`: `val model = workflow.model ?: config.defaultModel`. The string is
 passed verbatim into `GeminiProvider` (`GeminiProvider.kt:74`, `modelFor` at `:122-123`), which puts
 it in the request path.
 
@@ -238,7 +238,7 @@ product decision (§8).
 | `isPinned` | **Unsafe-ish.** Pinned workflows surface on Home (`HomeViewModel.kt:228`) and in the widget (`Daos.kt:19`). A bundle can pin itself onto the importer's home screen. Import already forces false (`WorkflowBundle.kt:68`) — but export keeps it (`:90`), so the field travels and only the current import code stops it. |
 | `isFavorite` | Same, `Daos.kt:16` / `:91` vs `:69`. |
 | `sortOrder` | **Unsafe and not sanitised today.** Every library query orders by it (`Daos.kt:13-19`), and both mappers pass it through (`WorkflowBundle.kt:71`, `:93`). `"sortOrder": -999999` floats an imported workflow above everything the user made. |
-| `maxTokens` | **Unbounded.** Goes straight to `AiRequest` (`ExecuteWorkflowUseCase.kt:149`). A bundle can request a million tokens against the importer's key. |
+| `maxTokens` | **Unbounded.** Goes straight to `AiRequest` (`ExecuteWorkflowUseCase.kt:142`). A bundle can request a million tokens against the importer's key. |
 | `name`, `prompt`, `systemPrompt` | Safe in content, **unbounded in size**. No length check anywhere; only blankness is checked (`DiscoverViewModel.kt:183`). A 50MB prompt goes into Room and then into every list query. |
 | `temperature` | Safe. |
 | `category`, `input`, `output` | Safe as data — but see §4.3 for the *combinations*. |
@@ -334,7 +334,7 @@ reasons:
    URL, and an unknown value silently yields the importer's own default (§2.1).
 4. **`ignoreUnknownKeys = true`** (both configs) discards any extra key an attacker adds before it
    can reach a field.
-5. **The destination of every request is the importer's own row.** `ExecuteWorkflowUseCase.kt:156`
+5. **The destination of every request is the importer's own row.** `ExecuteWorkflowUseCase.kt:149`
    is `provider.generate(request, config, apiKey)` where `config` came from `providers.resolve(...)`
    — a local read. There is exactly one execution path, so there is no second place to check.
 6. **The output renderer cannot fetch anything.** `MarkdownText` handles fenced code, headings,
@@ -380,15 +380,16 @@ exist.
 
 **(a) The prompt can read the screen even when `input` does not say so.**
 
-`ExecuteWorkflowUseCase.kt:140-142` computes the variable set from the *prompt text*, then `:235`
-resolves `{{screen_text}}` via the accessibility service. A workflow declared
-`"input": "SELECTED_TEXT"` whose prompt happens to contain `{{screen_text}}` reads the whole screen.
+`ExecuteWorkflowUseCase.kt:133-135` computes the variable set from the *prompt text*, then
+`ResolveWorkflowInputUseCase.kt:80` resolves `{{screen_text}}` via the accessibility service. A
+workflow declared `"input": "SELECTED_TEXT"` whose prompt happens to contain `{{screen_text}}` reads
+the whole screen.
 Its Discover detail row would read "Selected text → Bottom sheet"
 (`DiscoverRoute.kt:456-459`), which is true and completely misleading.
 
-Worse, `resolveText` (`:186-205`) means almost every text workflow can end up reading the screen
-anyway: for `SELECTED_TEXT` and `SHARE_INTENT`, a launch that carries no text — bubble, shortcut,
-tile, widget — falls back to the clipboard and *then* to screen text (`:196-198`).
+Worse, `ResolveWorkflowInputUseCase.text` (`:35-54`) means almost every text workflow can end up
+reading the screen anyway: for `SELECTED_TEXT` and `SHARE_INTENT`, a launch that carries no text —
+bubble, shortcut, tile, widget — falls back to the clipboard and *then* to screen text (`:45-47`).
 
 **A warning computed from the `input` enum alone is wrong.** It must be computed from `input`
 **plus** `PromptTemplate.variablesIn(prompt) + variablesIn(systemPrompt)`.
