@@ -57,7 +57,7 @@ broad permission triggers a Play declaration and buys nothing.
 | Quick Settings tile | `TileService` → `arcx://run/` | user adds it |
 | Launcher icon "ArcX Actions" | `<activity-alias>` MAIN/LAUNCHER | nothing |
 | Long-press "Actions" | static shortcut | nothing |
-| Home-screen shortcuts | `ShortcutManagerCompat` pinned | launcher support |
+| Home-screen shortcuts | `ShortcutManagerCompat` pinned, one per workflow | launcher support |
 | Widget | Glance | nothing |
 | Floating bubble | `TYPE_APPLICATION_OVERLAY` + `specialUse` FGS | `SYSTEM_ALERT_WINDOW` |
 | Accessibility button | `FLAG_REQUEST_ACCESSIBILITY_BUTTON` | user assigns it |
@@ -65,6 +65,34 @@ broad permission triggers a Play declaration and buys nothing.
 The alias, the shortcut and the tile all exist because **a component only reaches Samsung's Edge
 panel, Bixby Routines or a gesture binding if it is launcher-visible**. The picker was always an
 Activity; nothing pointed at it.
+
+### Making one workflow launchable on its own
+
+Settled on device, after a long detour — record it here so it is not re-argued.
+
+**A pinned shortcut is the answer.** "Add to home screen" in a workflow's ⋮ menu calls
+`ArcxShortcuts.requestPinShortcut`, producing an icon that carries `arcx://run/{id}` and fires that
+workflow with no picker in between. It keeps the workflow's own name and emoji, and **Samsung's
+Tasks edge accepts it** — verified on an S25 — which is what the whole question was really about.
+
+Two dead ends, both investigated properly before being dropped:
+
+- **A pool of `<activity-alias>` entries**, one per workflow slot, enabled and disabled at runtime
+  the way the "ArcX Actions" icon is. This is the only way to be a *launcher activity*, which is
+  what Samsung's **Apps** edge enumerates — but `android:label` on an alias is baked into the APK
+  and there is no API to change it at runtime, so the panel would show "ArcX 1", "ArcX 2". The names
+  are the point, so this fails on its own terms.
+- **Generating an installable APK per workflow**, the way Tasker App Factory does for tasks. Real,
+  and it would work. The costs: on-device signing needs a private key shipped inside ArcX (the
+  known on-device signers work by bundling a `.pk8` and a pre-generated `.RSA` header, since
+  `apksig` is meant to run off-device); `REQUEST_INSTALL_PACKAGES` is a restricted Play permission
+  limited to browsers, file managers, MDM, backup and device-migration apps; and every edit to a
+  workflow means regenerating and reinstalling a package. The generated app would also have to be a
+  stub that deep-links back into ArcX — which is the alias idea again, installed separately.
+
+Note the in-app **pin** (`isPinned`) is a different thing entirely: it floats a workflow up ArcX's
+own lists. The menu item used to say "Pin to home screen" while doing only that, which is why this
+looked unimplemented for so long.
 
 ### The execution path
 

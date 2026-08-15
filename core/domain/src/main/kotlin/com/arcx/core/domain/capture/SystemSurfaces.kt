@@ -1,6 +1,7 @@
 package com.arcx.core.domain.capture
 
 import android.content.Intent
+import com.arcx.core.model.Workflow
 
 /**
  * The permission state behind ArcX's out-of-app surfaces, so the Settings screen can show and
@@ -72,4 +73,19 @@ interface SystemSurfaces {
      */
     fun canAddQuickTile(): Boolean
     fun requestAddQuickTile()
+
+    /**
+     * Whether this launcher will accept a pinned shortcut at all. Some third-party ones do not, and
+     * offering a menu item that can only ever do nothing is worse than not offering it.
+     */
+    fun canPinShortcut(): Boolean
+
+    /**
+     * Asks the launcher to add a home-screen icon that runs [workflow] directly — no picker, no
+     * ArcX window in between, since the icon carries `arcx://run/{id}`.
+     *
+     * The launcher owns the confirmation dialog and the outcome, so there is nothing to report
+     * back: returns false only when the request could not be made at all.
+     */
+    fun pinWorkflowShortcut(workflow: Workflow): Boolean
 }

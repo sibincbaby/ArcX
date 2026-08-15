@@ -2,6 +2,7 @@ package com.arcx.feature.workflow
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.arcx.core.domain.capture.SystemSurfaces
 import com.arcx.core.domain.repository.WorkflowRepository
 import com.arcx.core.domain.usecase.DeleteWorkflowUseCase
 import com.arcx.core.domain.usecase.DuplicateWorkflowUseCase
@@ -53,6 +54,8 @@ internal data class WorkflowListUiState(
      * "you have no workflows yet" from "your filter matched none", which need different copy.
      */
     val libraryIsEmpty: Boolean = false,
+    /** False on launchers that refuse pinned shortcuts; the menu item is hidden rather than dead. */
+    val canPinShortcut: Boolean = false,
 ) {
     val isFiltered: Boolean get() = query.isNotBlank() || category != null
     val isEmpty: Boolean get() = sections.all { it.workflows.isEmpty() }
@@ -61,6 +64,7 @@ internal data class WorkflowListUiState(
 @HiltViewModel
 internal class WorkflowListViewModel @Inject constructor(
     workflows: WorkflowRepository,
+    private val surfaces: SystemSurfaces,
     private val favorite: ToggleFavoriteUseCase,
     private val pinned: TogglePinnedUseCase,
     private val remove: DeleteWorkflowUseCase,
@@ -89,6 +93,7 @@ internal class WorkflowListViewModel @Inject constructor(
                     .filter { it.count > 0 },
                 sections = sectionsOf(visible, order, grouped = text.isBlank()),
                 libraryIsEmpty = all.isEmpty(),
+                canPinShortcut = surfaces.canPinShortcut(),
             )
         }.stateIn(
             scope = viewModelScope,
@@ -119,6 +124,15 @@ internal class WorkflowListViewModel @Inject constructor(
 
     fun togglePinned(workflow: Workflow) {
         viewModelScope.launch { pinned(workflow) }
+    }
+
+    /**
+     * Hands the workflow to the launcher as its own icon. The launcher shows its own confirmation
+     * and owns the outcome, so there is nothing to report back — and nothing changes in ArcX, which
+     * is why this touches no repository.
+     */
+    fun addToHomeScreen(workflow: Workflow) {
+        surfaces.pinWorkflowShortcut(workflow)
     }
 
     fun delete(workflow: Workflow) {

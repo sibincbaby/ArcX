@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.AddToHomeScreen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -80,9 +81,9 @@ import com.arcx.core.model.WorkflowCategory
  * The user's library. Everything they have built or installed, searchable, filterable, and one
  * tap from running — long press to configure, the same two gestures as every other surface.
  *
- * [onPinToHomeScreen] is a hook for the launcher shortcut, which needs a `ShortcutManager` and
- * an Activity — neither of which belongs in a feature module. It fires only when the workflow
- * is being pinned, never when it is being unpinned.
+ * "Add to home screen" goes out through the SystemSurfaces port rather than a callback: it needs
+ * a ShortcutManager, which does not belong in a feature module, and the previous hook for it was
+ * never passed by any caller and fired on the wrong gesture besides.
  */
 @Composable
 fun WorkflowListRoute(
@@ -90,7 +91,6 @@ fun WorkflowListRoute(
     onEditWorkflow: (String) -> Unit,
     onCreateWorkflow: () -> Unit,
     modifier: Modifier = Modifier,
-    onPinToHomeScreen: (String) -> Unit = {},
 ) {
     val viewModel: WorkflowListViewModel = hiltViewModel()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -112,10 +112,8 @@ fun WorkflowListRoute(
         onCreate = onCreateWorkflow,
         onToggleFavorite = viewModel::toggleFavorite,
         onDuplicate = { workflow -> viewModel.duplicate(workflow, openEditor = workflow.isBuiltIn) },
-        onTogglePin = { workflow ->
-            viewModel.togglePinned(workflow)
-            if (!workflow.isPinned) onPinToHomeScreen(workflow.id)
-        },
+        onTogglePin = viewModel::togglePinned,
+        onAddToHomeScreen = viewModel::addToHomeScreen,
         onDelete = viewModel::delete,
     )
 }
@@ -133,6 +131,7 @@ private fun WorkflowListScreen(
     onToggleFavorite: (Workflow) -> Unit,
     onDuplicate: (Workflow) -> Unit,
     onTogglePin: (Workflow) -> Unit,
+    onAddToHomeScreen: (Workflow) -> Unit,
     onDelete: (Workflow) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -209,6 +208,8 @@ private fun WorkflowListScreen(
                     onToggleFavorite = onToggleFavorite,
                     onDuplicate = onDuplicate,
                     onTogglePin = onTogglePin,
+                    onAddToHomeScreen = onAddToHomeScreen,
+                    canPinShortcut = state.canPinShortcut,
                     onDelete = { pendingDelete = it },
                 )
             }
@@ -242,6 +243,8 @@ private fun LazyListScope.librarySections(
     onToggleFavorite: (Workflow) -> Unit,
     onDuplicate: (Workflow) -> Unit,
     onTogglePin: (Workflow) -> Unit,
+    onAddToHomeScreen: (Workflow) -> Unit,
+    canPinShortcut: Boolean,
     onDelete: (Workflow) -> Unit,
 ) {
     sections.forEach { section ->
@@ -263,6 +266,8 @@ private fun LazyListScope.librarySections(
                 onToggleFavorite = { onToggleFavorite(workflow) },
                 onDuplicate = { onDuplicate(workflow) },
                 onTogglePin = { onTogglePin(workflow) },
+                onAddToHomeScreen = { onAddToHomeScreen(workflow) },
+                canPinShortcut = canPinShortcut,
                 onDelete = { onDelete(workflow) },
             )
         }
@@ -380,6 +385,8 @@ private fun WorkflowRow(
     onToggleFavorite: () -> Unit,
     onDuplicate: () -> Unit,
     onTogglePin: () -> Unit,
+    onAddToHomeScreen: () -> Unit,
+    canPinShortcut: Boolean,
     onDelete: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -458,10 +465,20 @@ private fun WorkflowRow(
                         }
                     }
 
+                    // This said "Pin to home screen" and did nothing of the kind — it only sets
+                    // isPinned, which floats the workflow to the top of ArcX's own lists. The
+                    // home-screen icon is the separate item below.
                     MenuRow(
-                        label = if (workflow.isPinned) "Remove from home screen" else "Pin to home screen",
+                        label = if (workflow.isPinned) "Unpin from top" else "Pin to top",
                         icon = Icons.Outlined.PushPin,
                     ) { menuOpen = false; onTogglePin() }
+
+                    if (canPinShortcut) {
+                        MenuRow("Add to home screen", Icons.Outlined.AddToHomeScreen) {
+                            menuOpen = false
+                            onAddToHomeScreen()
+                        }
+                    }
 
                     if (!workflow.isBuiltIn) {
                         MenuRow("Delete", Icons.Outlined.Delete) { menuOpen = false; onDelete() }

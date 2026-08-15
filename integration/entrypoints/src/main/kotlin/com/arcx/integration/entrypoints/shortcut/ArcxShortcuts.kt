@@ -41,8 +41,13 @@ object ArcxShortcuts {
      * launcher does not support pinning at all (most third-party ones on pre-Oreo semantics), which
      * is the caller's cue to hide the option rather than offer something that will not happen.
      */
+    /** Whether the current launcher implements pinning; the caller hides the option when false. */
+    fun canPin(context: Context): Boolean =
+        runCatching { ShortcutManagerCompat.isRequestPinShortcutSupported(context) }
+            .getOrDefault(false)
+
     fun requestPinShortcut(context: Context, workflow: Workflow): Boolean {
-        if (!ShortcutManagerCompat.isRequestPinShortcutSupported(context)) return false
+        if (!canPin(context)) return false
         return runCatching {
             ShortcutManagerCompat.requestPinShortcut(context, build(context, workflow, rank = 0), null)
         }.getOrDefault(false)

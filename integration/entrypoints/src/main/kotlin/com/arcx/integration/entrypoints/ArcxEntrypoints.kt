@@ -13,6 +13,8 @@ import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.glance.appwidget.updateAll
 import com.arcx.core.domain.capture.SystemSurfaces
+import com.arcx.core.model.Workflow
+import com.arcx.integration.entrypoints.shortcut.ArcxShortcuts
 import com.arcx.integration.entrypoints.accessibility.AccessibilityServiceHolder
 import com.arcx.integration.entrypoints.accessibility.ArcxAccessibility
 import com.arcx.integration.entrypoints.overlay.OverlayPermission
@@ -130,6 +132,11 @@ class ArcxEntrypoints @Inject constructor(
             )
         }
     }
+
+    override fun canPinShortcut(): Boolean = ArcxShortcuts.canPin(context)
+
+    override fun pinWorkflowShortcut(workflow: Workflow): Boolean =
+        ArcxShortcuts.requestPinShortcut(context, workflow)
 
     private fun actionsAlias(): ComponentName =
         ComponentName(context.packageName, ArcxDeepLinks.ACTIONS_ALIAS)
