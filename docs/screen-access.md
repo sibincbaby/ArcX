@@ -6,6 +6,10 @@ written up so the next session can start from the conclusions rather than redisc
 Status of this document: the bug is diagnosed and fixed, the permission model is mapped, and one
 design decision is still open — see [Open decision](#open-decision).
 
+Updated after `689cd83`, which removed the biggest limitation described here: screen capture is no
+longer bubble-only. §3a carried a wrong conclusion for a while and now says so; if you are reading
+this to decide something, read that section before the others.
+
 ---
 
 ## 1. There is only one permission, and ArcX calls it two things
@@ -33,7 +37,27 @@ The two capabilities in `accessibility_service_config.xml` are independent. Taki
 | `{{current_app}}` | — | — | ✅ from `AccessibilityEvent.getPackageName()` |
 | **Replace selected text from the selection menu** | — | — | ✅ `ACTION_PROCESS_TEXT` + `setResult` |
 
-That last row matters and is easy to get wrong. Replacing selected text **already works with no
+### Per entry point
+
+The table above is per *feature*. This one is per *surface*, which is the question that actually
+gets asked ("why does it work from the bubble and not the tile?").
+
+| Entry point | Screen image | `{{screen_text}}` | Text input | Replace selection |
+|---|---|---|---|---|
+| Bubble | ✅ captures | ✅ fresh read at expand | clipboard → screen text | ❌ |
+| Accessibility button | ✅ captures | ✅ cached snapshot | clipboard → screen text | ❌ |
+| Quick Settings tile | ✅ captures | cached | clipboard → screen text | ❌ |
+| Edge panel / shortcut / widget | ✅ captures | cached | clipboard → screen text | ❌ |
+| Share sheet | ✅ uses the shared image if there is one, else captures | cached | ✅ shared text | ❌ |
+| Text selection | ✅ captures | cached | ✅ the selection | ✅ **no permission** |
+| "ArcX Actions" drawer icon | ⚠️ captures the **home screen** — see §3a | cached | clipboard → screen text | ❌ |
+
+Every ✅ in the image column arrived with `689cd83`; before it, only the bubble had one. The text
+snapshot and the image behave differently and it is worth knowing which is which: the text snapshot
+is rewritten on **every** window change so it self-refreshes, while the image is taken only when a
+vision workflow is actually run.
+
+That last row of the feature table matters and is easy to get wrong. Replacing selected text **already works with no
 permission at all**: Android sends `ACTION_PROCESS_TEXT`, `RunnerActivity` returns the answer via
 `setResult(EXTRA_PROCESS_TEXT)`, and the *host app* performs the replacement. ArcX never touches
 the field. (This is why `RunnerActivity` must stay on standard launch mode — `singleTask` breaks
@@ -66,15 +90,43 @@ entirely. It would forfeit `{{screen_text}}` and any future insert-from-bubble.
 
 `captureScreenImage()` had exactly one caller in the codebase: `OverlayService`.
 `AccessibilityScreenContextProvider.screenshot()` only returns `latestScreenImage()`, the cached
-frame, and `frame` is written nowhere else. So a `SCREENSHOT` workflow fired from a Home tile, the
+frame, and `frame` was written nowhere else. So a `SCREENSHOT` workflow fired from a Home tile, the
 Library, the picker, a shortcut, the widget or the share sheet had no frame and failed every time.
 
-This is not an oversight so much as a constraint: to photograph *the user's* screen, ArcX must not
-be on it. The bubble works because it hides itself, grabs, then opens. Only two surfaces can
-possibly do this — **the bubble and the accessibility button** — because they are the only ones
-that fire while the user's app is still the only thing on the display.
+**This section previously called that a constraint — "only the bubble and the accessibility button
+can possibly do this". That was wrong**, and it is worth saying so plainly, because it sent a whole
+session looking at MediaProjection for a problem that did not need it.
 
-**Fix:** `onClicked` in `ArcxAccessibilityService` now captures before launching the picker.
+The real rule is narrower: **ArcX's own pixels must not be in the picture.** The bubble satisfies it
+by blanking a 56dp handle. What the runner has going for it is that its window is *translucent* —
+the task underneath keeps drawing, so the app the user came from is still on the display, behind the
+sheet. Verified by screenshotting the picker over Chrome and seeing the page through it. Blanking
+our own content is therefore enough, wherever we are.
+
+**Fix (`689cd83`):** the capture moved into `RunnerViewModel.run()`, the one choke point every entry
+point already passes through:
+
+- the host renders **nothing** while capturing — not a transparent sheet, nothing, since a scrim
+  still on screen would be photographed
+- it reports back once it has genuinely stopped drawing (two frames plus a settle), rather than the
+  ViewModel guessing with a delay that fails silently when it is too short
+- `ScreenContextProvider.captureScreenshotNow()` waits for the JPEG to be *encoded*, not merely
+  grabbed; `screenshot()` still returns the held frame
+
+Capture now happens **on tap, not on launch**, so a text run never grabs a picture of whatever
+happened to be on screen. That also closed a hazard this document did not previously name: because
+`frame` was only ever written by the bubble and had a 2-minute TTL, a tile run could succeed by
+sending a two-minute-old picture of a *different app* — a confident answer about the wrong screen,
+stored in History as if it were current.
+
+`onClicked` in `ArcxAccessibilityService` also captures before launching, from the earlier attempt
+at this. It is now redundant but harmless: the second grab hits the platform's minimum interval,
+returns null, and the run falls back to the frame already held.
+
+**What still cannot work, and never will:** whatever is behind the window is what gets photographed.
+From the Quick Settings tile or an Edge panel over Chrome, that is Chrome. From the "ArcX Actions"
+drawer icon it is your home screen, because reaching that icon meant leaving the app. No amount of
+code recovers a screen the user has already navigated away from.
 
 ### 3b. The error blamed the wrong thing
 
@@ -83,8 +135,14 @@ reading permission… Turn it on in Settings › Entry points."* With the permis
 still told the user to grant it. **This is exactly the reported symptom.**
 
 **Fix:** `NoScreenshot(captureAvailable: Boolean)`. `ExecuteWorkflowUseCase` passes
-`screen.canScreenshot()`, and the sheet says either "grant the permission" or *"Nothing to look at
-— ArcX can only photograph the screen from the floating bubble or the accessibility button."*
+`screen.canScreenshot()`, and the sheet says either "grant the permission" or *"There was nothing on
+screen to photograph"*.
+
+Since §3a, the second branch is far rarer — every entry point can capture now — so it means what it
+says rather than "you used the wrong surface". Note it is still two-valued while the situation is
+three: a capture that the platform **refuses** (a secure window — banking, DRM, refused outright on
+API 34+) reports as "nothing to look at" even though the permission is granted and the surface was
+fine. Outstanding.
 
 ### 3c. Related: "switched on but not running"
 
@@ -110,8 +168,9 @@ It is now applied at runtime from `UserSettings.accessibilityButtonOffered` (def
 `AccessibilityServiceInfo.flags` + `setServiceInfo`, with a switch in Entry points. Granting
 accessibility and volunteering for a system shortcut are now two separate decisions.
 
-Note the interaction with §3a: with the button off, **the bubble is the only surface that can
-capture the screen**.
+Note the interaction with §3a: this used to mean that with the button off, the bubble was the only
+surface that could capture. **That is no longer true** — every entry point captures for itself now,
+so leaving the accessibility button off costs nothing but the button itself.
 
 ---
 
@@ -127,6 +186,10 @@ There are three tiers. All are real.
 
 **Tier 1 works today** — ArcX already accepts `IMAGE` input and share-sheet attachments. It is the
 natural fallback for a user who has removed accessibility.
+
+Tier 2's appeal dropped sharply after §3a. The reason to want `MediaProjection` was that
+accessibility capture only worked from one surface; it now works from all of them, so the remaining
+gap is narrower than it looked: capture without the accessibility grant at all.
 
 **Tier 2 notes.** `MediaProjection` needs a foreground service of type `mediaProjection`, started
 before projection (required from API 34). Each `MediaProjection` instance is one-shot: once
@@ -167,7 +230,11 @@ The shortcut half is done (§4). The rest resolves to a fork:
 ## 7. Outstanding work
 
 - The builder still offers `SCREENSHOT` and `SCREEN_TEXT` when accessibility is off, so a user can
-  build a workflow that silently cannot run. Either hide them or mark them as requiring it.
+  build a workflow that silently cannot run. Either hide them or mark them as requiring it. Narrower
+  than it was — with accessibility granted, `SCREENSHOT` now works from every surface except the
+  drawer icon — but the accessibility-off case is unchanged.
+- `NoScreenshot` is two-valued where the situation is three: a platform refusal (secure window)
+  reads as "nothing to look at". See §3b.
 - Entry points should stop calling one grant "Screen reading" (§1) and state plainly what works
   with it and what still works without.
 - The sideload caveat below is not mentioned anywhere in the UI.
@@ -181,9 +248,27 @@ The shortcut half is done (§4). The rest resolves to a fork:
   on, fired from Home → *"Nothing to look at…"*.
 - Build green, 67 unit tests pass, app installs and runs.
 
+**Verified on device (Redmi 23049PCD8I, Android 15) for the §3a fix:**
+- Reproduced first: "Explain This Screen" from the picker over Chrome → *"Nothing to look at"*.
+- The premise, before writing any code: screenshotted the picker over Chrome and confirmed the page
+  is fully composited behind the translucent window.
+- After the fix, from the **real Quick Settings tile** over Chrome → a correct description of the
+  page ("Google AI Studio in a mobile browser…").
+- Pulled the stored JPEG out of app storage and looked at it: **pure Chrome, no sheet, no scrim, no
+  ArcX pixels**. The blanking handshake works.
+- A regression caught the same way: the first successful run stored *nothing*. `record()` still
+  keyed History off the use case's own capture, so with the image arriving as an attachment every
+  surface but the bubble ran fine and silently lost the picture. Fixed, with a test
+  (`screenshot supplied by the caller is the one stored in history`), and re-verified by pulling the
+  file again.
+
 **Not verified — do this first next session:**
-- The accessibility-button capture path end to end (§3a fix). Never tested; the device dropped off
-  USB before it could be.
+- **The bubble path after `689cd83`.** The overlay was not running on the Redmi (MIUI autostart
+  after a reinstall), so the one path that always worked is the one left unconfirmed. Reasoning says
+  it is fine — the second grab hits the platform interval, returns null, and falls back to the frame
+  the bubble already took — but that is reasoning, not evidence.
+- The accessibility-button capture path end to end. Never tested; the device dropped off USB before
+  it could be. Less important now that it is redundant (§3a).
 - The "switched on but not running" message (§3c). Hard to induce deliberately — `force-stop` on
   this phone removes the service from the setting entirely rather than leaving it stranded.
 - The `accessibilityButtonOffered` runtime flag (§4). Only exercises once the service is bound.
