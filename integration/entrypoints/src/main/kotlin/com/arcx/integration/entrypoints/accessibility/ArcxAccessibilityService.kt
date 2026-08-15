@@ -4,7 +4,6 @@ import android.accessibilityservice.AccessibilityButtonController
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
-import android.graphics.Bitmap
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -12,9 +11,7 @@ import android.os.SystemClock
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.AccessibilityWindowInfo
 import androidx.annotation.RequiresApi
-import androidx.core.graphics.scale
 import com.arcx.integration.entrypoints.ArcxDeepLinks
 import com.arcx.integration.entrypoints.di.entrypointsGraph
 import kotlinx.coroutines.CoroutineScope
@@ -22,19 +19,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import java.io.ByteArrayOutputStream
-import kotlin.math.roundToInt
-
-/** Past this the prompt costs more than the answer is worth, and long feeds are mostly chrome. */
-private const val MAX_SCREEN_TEXT = 8_000
-
-/** A real hierarchy is rarely deeper than ~25; the cap is a fuse, not a budget. */
-private const val MAX_DEPTH = 60
 
 /**
  * How long a snapshot stays usable. Long enough to cover reading a screen and then reaching for a
@@ -46,40 +34,8 @@ private const val SNAPSHOT_TTL_MS = 2 * 60 * 1000L
 /** Window transitions arrive in bursts of two or three; this collapses them into one walk. */
 private const val SNAPSHOT_MIN_INTERVAL_MS = 500L
 
-/**
- * Below this a read is treated as suspect rather than final.
- *
- * Chrome is the motivating case: measured on device, a freshly opened page yields 131 characters of
- * pure toolbar ("Connection is secure", "See 2 tabs", "Customise and control Google Chrome") for
- * about 1.3 seconds before the renderer's accessibility tree appears and the count jumps past 1900.
- * Any real screen clears this bar easily, so the retry below almost never runs.
- */
-private const val SUBSTANTIAL_TEXT_CHARS = 400
-
-/**
- * Ceiling on *starting* another attempt at a thin read; a walk already under way is allowed to
- * finish, so a huge tree can overrun this by the cost of one walk. Only the bubble's panel-open
- * capture ever spends it, and nothing is waiting on that.
- */
-private const val STABILISE_BUDGET_MS = 500L
-
-private const val STABILISE_STEP_MS = 100L
-
 /** How long two captures are assumed to be of the same screen. See `store`. */
 private const val SAME_SCREEN_WINDOW_MS = 8_000L
-
-/**
- * Long edge of the kept frame, in pixels.
- *
- * This device captures at 1080x2400, and that bitmap is ~10MB raw. The frame is base64'd into a
- * prompt and written to disk for history, so the native resolution is paid for three times over for
- * detail a vision model does not use — 1568 is the point past which Gemini's image tiling stops
- * resolving anything new, and it still leaves screen text comfortably legible.
- */
-private const val MAX_SCREENSHOT_EDGE = 1568
-
-/** Screens are flat colour and glyph edges; 80 is where JPEG stops visibly smearing the text. */
-private const val SCREENSHOT_JPEG_QUALITY = 80
 
 /**
  * The platform refuses captures taken too close together with
@@ -141,6 +97,10 @@ private const val SCREENSHOT_MIN_INTERVAL_MS = 1_000L
  * Because of that last point there is exactly one moment a usable frame exists — the tap that
  * opens the panel, with the handle hidden — so unlike text there is no speculative snapshot on
  * window changes and no second capture at pick time.
+ *
+ * The two capture paths themselves live next door: the node-tree walk in `ScreenTextReader.kt`,
+ * the pixel encode in `ScreenFrameEncoder.kt`. What stays here is what needs the bound service —
+ * its lifecycle, the events, and the two fields the results are held in.
  */
 class ArcxAccessibilityService : AccessibilityService() {
 
@@ -330,34 +290,6 @@ class ArcxAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Reads once, and only pays for more if the first read looks half-built.
-     *
-     * The fast path is the whole point: any screen with real content clears
-     * [SUBSTANTIAL_TEXT_CHARS] on the first walk and this returns with no delay whatsoever, which
-     * is what keeps tapping a workflow feeling instant.
-     *
-     * When the first read *is* thin, growth is the signal rather than a guess about what browser
-     * chrome looks like — re-read, keep the longer result, and stop the moment a read fails to
-     * beat the one before it. A screen that is genuinely short (a dialog, a settings toggle) costs
-     * exactly one extra walk before that check ends the loop.
-     */
-    private suspend fun readUntilStable(): ScreenSnapshot? {
-        var best = readForegroundWindow() ?: return null
-        if (best.text.length >= SUBSTANTIAL_TEXT_CHARS) return best
-
-        val deadline = SystemClock.elapsedRealtime() + STABILISE_BUDGET_MS
-        while (SystemClock.elapsedRealtime() < deadline) {
-            delay(STABILISE_STEP_MS)
-            // Null here means ArcX took the front mid-poll; the best read so far is still good.
-            val next = readForegroundWindow() ?: break
-            if (next.text.length <= best.text.length) break
-            best = next
-            if (best.text.length >= SUBSTANTIAL_TEXT_CHARS) break
-        }
-        return best
-    }
-
-    /**
      * Visible text of the window the *user* is looking at, or null when there is nothing usable.
      * Call this off the main thread — every node access is a blocking binder call into the app
      * being inspected.
@@ -468,34 +400,12 @@ class ArcxAccessibilityService : AccessibilityService() {
         ?.jpeg
 
     /**
-     * Turns a [ScreenshotResult] into the JPEG that is kept. Runs on the screenshot executor.
-     *
-     * The [android.hardware.HardwareBuffer] is a graphics allocation whose ownership the platform
-     * hands over, and closing it is not tidiness: a leaked one is several megabytes of memory the
-     * JVM heap has no idea about, so nothing will ever collect it, on every single capture. Hence
-     * the `finally` — the wrap, the copy and the encode below all have their own ways to fail.
-     *
-     * The copy out of the buffer is unavoidable. `wrapHardwareBuffer` yields a `Config.HARDWARE`
-     * bitmap, which cannot be read back or drawn onto a software canvas, so nothing can be scaled
-     * or compressed until the pixels are in the heap.
+     * Holds what [decodeFrame] produced. Runs on the screenshot executor, which is why the
+     * liveness check below is not redundant.
      */
     @RequiresApi(Build.VERSION_CODES.R)
     private fun keepFrame(screenshot: ScreenshotResult): ByteArray? {
-        val buffer = screenshot.hardwareBuffer
-        val jpeg = try {
-            val wrapped = runCatching {
-                Bitmap.wrapHardwareBuffer(buffer, screenshot.colorSpace)
-            }.getOrNull()
-            val software = wrapped
-                ?.runCatching { copy(Bitmap.Config.ARGB_8888, false) }
-                ?.getOrNull()
-            wrapped?.recycle()
-            software?.let { encodeFrame(it) }
-        } finally {
-            buffer.close()
-        }
-
-        if (jpeg == null) return null
+        val jpeg = decodeFrame(screenshot) ?: return null
         frame = ScreenFrame(jpeg = jpeg, takenAt = SystemClock.elapsedRealtime())
         // Encoding takes long enough that the user can have switched the service off underneath
         // it, and the teardown that cleared `frame` would then have run before this wrote to it.
@@ -505,146 +415,4 @@ class ArcxAccessibilityService : AccessibilityService() {
         }
         return jpeg
     }
-
-    private fun readForegroundWindow(): ScreenSnapshot? {
-        val root = topApplicationWindowRoot() ?: return null
-        val accumulator = ScreenTextAccumulator(MAX_SCREEN_TEXT)
-        // equals() on AccessibilityNodeInfo compares the source node id and window, so an ancestor
-        // reachable again through a malformed hierarchy compares equal and is caught here.
-        collect(root, depth = 0, visited = HashSet(), into = accumulator)
-        val text = accumulator.result() ?: return null
-        return ScreenSnapshot(
-            text = text,
-            packageName = root.packageName?.toString(),
-            takenAt = SystemClock.elapsedRealtime(),
-        )
-    }
-
-    /**
-     * The top application window, provided it is not ArcX.
-     *
-     * Restricting to TYPE_APPLICATION drops the IME, the status bar and notification shade
-     * (TYPE_SYSTEM) and the bubble's own overlay in one condition. Returning null rather than
-     * ArcX's own window is deliberate: describing our own result sheet back to the user is a
-     * confidently wrong answer, which is worse than the honest "nothing to work on".
-     */
-    private fun topApplicationWindowRoot(): AccessibilityNodeInfo? {
-        val self = packageName
-        val fromWindowList = runCatching { windows }.getOrNull().orEmpty()
-            .asSequence()
-            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-            // Higher layer means closer to the user.
-            .sortedByDescending { it.layer }
-            .mapNotNull { runCatching { it.root }.getOrNull() }
-            .firstOrNull { it.packageName?.toString()?.let { pkg -> pkg != self } == true }
-        if (fromWindowList != null) return fromWindowList
-
-        // Some OEM builds hand back an empty window list however the service is configured, and it
-        // is empty on the lock screen. The active window is the only other thing we can ask for.
-        val active = runCatching { rootInActiveWindow }.getOrNull() ?: return null
-        return active.takeIf { it.packageName?.toString()?.let { pkg -> pkg != self } == true }
-    }
-
-    private fun collect(
-        node: AccessibilityNodeInfo,
-        depth: Int,
-        visited: MutableSet<AccessibilityNodeInfo>,
-        into: ScreenTextAccumulator,
-    ) {
-        if (depth > MAX_DEPTH || into.isFull) return
-        if (!visited.add(node)) return
-        // Recycled rows scrolled off a list stay in the tree. Including them would put text the
-        // user cannot see — and did not mean to send anywhere — into the prompt.
-        if (!runCatching { node.isVisibleToUser }.getOrDefault(false)) return
-
-        if (!node.isPassword) {
-            into.add(node.text)
-            // Only when it differs: most widgets set both to the same string.
-            val description = node.contentDescription
-            if (description != null && description.toString() != node.text?.toString()) {
-                into.add(description)
-            }
-        }
-
-        for (index in 0 until node.childCount) {
-            val child = runCatching { node.getChild(index) }.getOrNull() ?: continue
-            collect(child, depth + 1, visited, into)
-        }
-    }
-}
-
-/** What was on screen, and when — held only in memory, and only until it goes stale. */
-private class ScreenSnapshot(
-    val text: String,
-    val packageName: String?,
-    val takenAt: Long,
-)
-
-/** The same idea as [ScreenSnapshot], in pixels. Never written to disk from here. */
-private class ScreenFrame(
-    val jpeg: ByteArray,
-    val takenAt: Long,
-)
-
-/**
- * Downscales to [MAX_SCREENSHOT_EDGE] and JPEG-encodes, recycling [source] and anything it makes
- * along the way. Returns null if the encoder refuses.
- *
- * Call this off the main thread. Scaling a full-screen bitmap and compressing it are each tens of
- * milliseconds of pure CPU — several dropped frames if it ran while the bubble's panel was opening.
- */
-private fun encodeFrame(source: Bitmap): ByteArray? {
-    val longEdge = maxOf(source.width, source.height)
-    val scaled = if (longEdge <= MAX_SCREENSHOT_EDGE) {
-        source
-    } else {
-        val ratio = MAX_SCREENSHOT_EDGE.toDouble() / longEdge
-        runCatching {
-            source.scale(
-                (source.width * ratio).roundToInt().coerceAtLeast(1),
-                (source.height * ratio).roundToInt().coerceAtLeast(1),
-                // Filtered: nearest-neighbour on a downscale this large turns body text into
-                // speckle, and text is most of what a vision workflow is asked to read.
-                filter = true,
-            )
-        }.getOrNull() ?: source
-    }
-
-    val stream = ByteArrayOutputStream(DEFAULT_JPEG_BUFFER)
-    val encoded = runCatching {
-        scaled.compress(Bitmap.CompressFormat.JPEG, SCREENSHOT_JPEG_QUALITY, stream)
-    }.getOrDefault(false)
-
-    if (scaled !== source) scaled.recycle()
-    source.recycle()
-    return if (encoded) stream.toByteArray() else null
-}
-
-/** Roughly what a 1568px-long-edge screen encodes to, so the stream almost never has to regrow. */
-private const val DEFAULT_JPEG_BUFFER = 256 * 1024
-
-/**
- * Joins node text into one newline-separated block, dropping consecutive repeats and stopping hard
- * at [limit].
- *
- * Only *consecutive* repeats are dropped: a label duplicated between a toolbar and its content is
- * noise, but a word that legitimately recurs further down the screen is signal.
- */
-private class ScreenTextAccumulator(private val limit: Int) {
-
-    private val builder = StringBuilder()
-    private var previous: String? = null
-
-    val isFull: Boolean get() = builder.length >= limit
-
-    fun add(raw: CharSequence?) {
-        val text = raw?.toString()?.trim().orEmpty()
-        if (text.isEmpty() || text == previous || isFull) return
-        if (builder.isNotEmpty()) builder.append('\n')
-        val room = limit - builder.length
-        builder.append(if (text.length <= room) text else text.substring(0, room))
-        previous = text
-    }
-
-    fun result(): String? = builder.toString().trim().takeIf { it.isNotEmpty() }
 }
