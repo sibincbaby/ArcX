@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -61,6 +62,8 @@ import com.arcx.core.designsystem.component.ErrorCard
 import com.arcx.core.designsystem.component.MarkdownText
 import com.arcx.core.designsystem.component.SectionLabel
 import com.arcx.core.designsystem.component.WorkflowIcon
+import com.arcx.core.designsystem.format.formatDuration
+import com.arcx.core.designsystem.format.relativeTime
 import com.arcx.core.designsystem.theme.MetaTextStyle
 import com.arcx.core.designsystem.theme.warningTint
 import com.arcx.core.model.RunRecord
@@ -69,7 +72,6 @@ import com.arcx.core.model.RunSummary
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @Composable
 fun HistoryRoute(
@@ -108,6 +110,18 @@ private fun HistoryScreen(
 
     Scaffold { padding ->
         when {
+            // First, because a database ArcX could not read looks exactly like a history the
+            // user has not written yet — and it is also the reason the "history is off" flag
+            // below cannot be trusted, since that comes from the same failed read.
+            state.error != null -> Column(Modifier.padding(padding)) {
+                Title(canClear = false, onClear = {})
+                ErrorCard(
+                    title = "Couldn't load your history",
+                    message = state.error,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                )
+            }
+
             // Being switched off is a different situation from having nothing to show, and
             // saying so beats an empty list that looks like a bug.
             !state.historyEnabled -> Column(Modifier.padding(padding)) {
@@ -292,7 +306,10 @@ private fun RunRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(60.dp)
+                // A minimum, not a fixed height, for the same reason Home's tile grid uses
+                // IntrinsicSize.Max: at a large font scale these two lines are taller than 60dp,
+                // and a fixed row clips the "3h ago · gemini" line off the bottom.
+                .heightIn(min = 60.dp)
                 .clickable(onClick = onClick),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -476,32 +493,8 @@ private fun statusLabel(status: RunStatus): String = when (status) {
     RunStatus.CANCELLED -> "Cancelled"
 }
 
-private val CLOCK = DateTimeFormatter.ofPattern("HH:mm")
 private val STAMP = DateTimeFormatter.ofPattern("d MMM, HH:mm")
 
-/**
- * Relative only while it stays useful. Past a day "37h ago" is harder to place than a clock
- * time under a date heading, which the list already provides.
- */
-internal fun relativeTime(startedAt: Long, nowMillis: Long): String {
-    val elapsed = nowMillis - startedAt
-    return when {
-        elapsed < 0 -> absoluteClock(startedAt)
-        elapsed < 60_000L -> "Just now"
-        elapsed < 3_600_000L -> "${elapsed / 60_000L}m ago"
-        elapsed < 86_400_000L -> "${elapsed / 3_600_000L}h ago"
-        else -> absoluteClock(startedAt)
-    }
-}
-
-internal fun formatDuration(durationMs: Long): String = when {
-    durationMs < 1_000L -> "${durationMs}ms"
-    durationMs < 60_000L -> String.format(Locale.getDefault(), "%.1fs", durationMs / 1000.0)
-    else -> "${durationMs / 60_000L}m ${(durationMs % 60_000L) / 1_000L}s"
-}
-
-private fun absoluteClock(millis: Long): String =
-    Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(CLOCK)
-
+/** The detail sheet, unlike a row, has no day heading above it, so it prints the date itself. */
 private fun absoluteTime(millis: Long): String =
     Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(STAMP)

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arcx.core.common.di.DefaultDispatcher
 import com.arcx.core.common.time.TimeSource
+import com.arcx.core.common.time.startOfDay
 import com.arcx.core.domain.capture.ClipboardAccess
 import com.arcx.core.domain.repository.HistoryRepository
 import com.arcx.core.domain.repository.SettingsRepository
@@ -15,6 +16,7 @@ import com.arcx.core.model.RunSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -62,6 +64,8 @@ data class HistoryUiState(
      * grew.
      */
     val detail: RunRecord? = null,
+    /** Set when the reads behind this screen failed, so an empty list can say which kind it is. */
+    val error: String? = null,
 )
 
 @HiltViewModel
@@ -97,6 +101,10 @@ class HistoryViewModel @Inject constructor(
             detail = openRun,
         )
     }
+        // Above flowOn so the replacement state is built off the main thread with everything
+        // else. A throwing flow is a finished flow, so this is the last thing Activity will
+        // show until the screen is reopened — which is what the copy tells the user to do.
+        .catch { emit(HistoryUiState(loading = false, error = LOAD_FAILED)) }
         // Grouping a thousand rows by calendar day allocates a ZonedDateTime per row. That is
         // cheap once and ruinous on the UI thread, which is where stateIn(viewModelScope)
         // collects unless it is told otherwise.
@@ -134,6 +142,17 @@ class HistoryViewModel @Inject constructor(
 
 private const val STOP_TIMEOUT_MS = 5_000L
 
+/**
+ * Said instead of showing an empty list. Room and DataStore can both fail outright, and a flow
+ * that throws simply stops — leaving Activity on its last emission, which on launch is nothing
+ * at all. "Nothing here yet" then claims the user has never run a workflow, which may be a lie.
+ *
+ * Deliberately not the exception's own text: a `SQLiteDatabaseCorruptException` is not something
+ * the person reading it can act on.
+ */
+private const val LOAD_FAILED =
+    "ArcX couldn't read your run history from this device. Reopening the app usually fixes it."
+
 private val WITHIN_YEAR = DateTimeFormatter.ofPattern("EEEE, d MMMM")
 private val OTHER_YEAR = DateTimeFormatter.ofPattern("d MMMM yyyy")
 
@@ -166,13 +185,6 @@ internal fun statsFor(today: List<RunOutcome>): RunStats {
         medianMs = if (durations.isEmpty()) 0L else durations[durations.size / 2],
         failedToday = today.count { it.status == RunStatus.FAILED },
     )
-}
-
-/** Local calendar midnight — the boundary [groupByDay] uses, so both agree on "today". */
-internal fun startOfDay(nowMillis: Long): Long {
-    val zone = ZoneId.systemDefault()
-    return Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate().atStartOfDay(zone)
-        .toInstant().toEpochMilli()
 }
 
 private fun dayLabel(date: LocalDate, today: LocalDate): String = when {

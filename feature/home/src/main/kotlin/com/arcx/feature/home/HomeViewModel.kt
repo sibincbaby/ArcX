@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arcx.core.common.di.DefaultDispatcher
 import com.arcx.core.common.time.TimeSource
+import com.arcx.core.common.time.startOfDay
 import com.arcx.core.domain.capture.SystemSurfaces
 import com.arcx.core.domain.repository.HistoryRepository
 import com.arcx.core.domain.repository.SettingsRepository
@@ -16,6 +17,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
@@ -30,6 +32,19 @@ private const val MAX_TILES = 8
 
 /** Enough to answer "what did I just do", not enough to become a second Activity screen. */
 private const val MAX_RECENT_RUNS = 3
+
+/**
+ * Said instead of showing an empty screen. Room and DataStore can both fail outright — a
+ * database Android refused to open, a preferences file that did not survive a restore — and a
+ * flow that throws simply stops, leaving Home holding whatever it had, which on launch is
+ * nothing. "No workflows yet" then blames the user for the app's problem.
+ *
+ * Deliberately not the exception's own text: a `SQLiteDatabaseCorruptException` is not something
+ * the person reading it can act on.
+ */
+private const val LOAD_FAILED =
+    "ArcX couldn't read your workflows or your run history from this device. " +
+        "Reopening the app usually fixes it."
 
 /** A workflow as the grid draws it: the thing itself, plus what it usually costs to run. */
 data class HomeTile(
@@ -64,6 +79,8 @@ data class HomeUiState(
     /** Separates "you have nothing yet" from "nothing matches what you typed". */
     val libraryIsEmpty: Boolean = false,
     val loading: Boolean = true,
+    /** Set when the reads behind this screen failed, so an empty Home can say which kind it is. */
+    val error: String? = null,
 ) {
     val searching: Boolean get() = query.isNotBlank()
 }
@@ -146,6 +163,10 @@ class HomeViewModel @Inject constructor(
             loading = false,
         )
     }
+        // Above flowOn so the replacement state is built off the main thread with everything
+        // else. A throwing flow is a finished flow, so this is the last thing Home will show
+        // until the screen is reopened — which is exactly what the copy tells the user to do.
+        .catch { emit(HomeUiState(greeting = greeting, loading = false, error = LOAD_FAILED)) }
         // Off the main thread. `stateIn(viewModelScope)` collects on Main.immediate, so before
         // this every fold above ran on the UI thread — which is how a row count turned into
         // dropped frames rather than just memory.
@@ -206,16 +227,6 @@ private fun subtitleFor(workflowCount: Int, runsToday: Int): String {
 private fun tileOrder(shelf: Library): List<Workflow> =
     (shelf.pinned + shelf.favorites + shelf.recent + shelf.all.sortedBy { it.sortOrder })
         .distinctBy { it.id }
-
-/**
- * Local calendar midnight, not "twenty-four hours ago" — "runs today" has to reset at midnight
- * or the number means nothing to the person reading it.
- */
-internal fun startOfDay(nowMillis: Long): Long {
-    val zone = ZoneId.systemDefault()
-    return Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate().atStartOfDay(zone)
-        .toInstant().toEpochMilli()
-}
 
 private fun List<Workflow>.matching(query: String): List<Workflow> {
     val trimmed = query.trim()

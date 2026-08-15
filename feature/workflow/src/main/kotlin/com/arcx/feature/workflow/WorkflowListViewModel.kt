@@ -2,6 +2,7 @@ package com.arcx.feature.workflow
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.arcx.core.common.di.DefaultDispatcher
 import com.arcx.core.domain.capture.SystemSurfaces
 import com.arcx.core.domain.repository.WorkflowRepository
 import com.arcx.core.domain.usecase.DeleteWorkflowUseCase
@@ -11,15 +12,20 @@ import com.arcx.core.domain.usecase.TogglePinnedUseCase
 import com.arcx.core.model.Workflow
 import com.arcx.core.model.WorkflowCategory
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /** How the library orders itself inside each section. */
@@ -41,6 +47,12 @@ internal data class CategoryCount(
     val count: Int,
 )
 
+/** One read of the library: the rows, or the reason there are none of them. */
+private data class Library(
+    val workflows: List<Workflow> = emptyList(),
+    val error: String? = null,
+)
+
 internal data class WorkflowListUiState(
     val loading: Boolean = true,
     val query: String = "",
@@ -54,6 +66,12 @@ internal data class WorkflowListUiState(
      * "you have no workflows yet" from "your filter matched none", which need different copy.
      */
     val libraryIsEmpty: Boolean = false,
+    /**
+     * Set when the library could not be read at all. Without it a Room failure draws the same
+     * blank list as a fresh install, and "you have no workflows yet" is the one thing it does
+     * not mean — the user's workflows are still there, unreachable.
+     */
+    val error: String? = null,
     /** False on launchers that refuse pinned shortcuts; the menu item is hidden rather than dead. */
     val canPinShortcut: Boolean = false,
 ) {
@@ -69,18 +87,49 @@ internal class WorkflowListViewModel @Inject constructor(
     private val pinned: TogglePinnedUseCase,
     private val remove: DeleteWorkflowUseCase,
     private val clone: DuplicateWorkflowUseCase,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
     private val category = MutableStateFlow<WorkflowCategory?>(null)
     private val sort = MutableStateFlow(LibrarySort.RECENT)
 
+    /**
+     * Asked once, in [init], rather than inside the fold below. It is a binder call into
+     * ShortcutManager and its answer cannot change while the screen is open — the launcher would
+     * have to be swapped underneath it — but as part of the combine it re-ran on every keystroke
+     * and every edit to any workflow.
+     */
+    private val canPinShortcut = MutableStateFlow(false)
+
     /** Copies made from a read-only built-in open straight into the editor; nothing else navigates. */
     private val editRequests = Channel<String>(Channel.BUFFERED)
     val editCopyRequests: Flow<String> = editRequests.receiveAsFlow()
 
+    /**
+     * Room's Flow throws into whoever collects it, which would cancel [uiState] and freeze the
+     * screen on whatever it last drew. Catching it here turns a failed read into something the
+     * screen can say out loud instead of an empty list that looks like an empty library.
+     */
+    private val library: Flow<Library> = workflows.observeAll()
+        .map { Library(workflows = it) }
+        .catch { emit(Library(error = "Your workflows could not be read.")) }
+
+    init {
+        viewModelScope.launch {
+            canPinShortcut.value = withContext(defaultDispatcher) { surfaces.canPinShortcut() }
+        }
+    }
+
     val uiState: StateFlow<WorkflowListUiState> =
-        combine(workflows.observeAll(), query, category, sort) { all, text, filter, order ->
+        combine(
+            library,
+            query,
+            category,
+            sort,
+            canPinShortcut,
+        ) { shelf, text, filter, order, canPin ->
+            val all = shelf.workflows
             val visible = all.filter { it.matches(text, filter) }
             WorkflowListUiState(
                 loading = false,
@@ -93,13 +142,19 @@ internal class WorkflowListViewModel @Inject constructor(
                     .filter { it.count > 0 },
                 sections = sectionsOf(visible, order, grouped = text.isBlank()),
                 libraryIsEmpty = all.isEmpty(),
-                canPinShortcut = surfaces.canPinShortcut(),
+                error = shelf.error,
+                canPinShortcut = canPin,
             )
-        }.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = WorkflowListUiState(),
-        )
+        }
+            // Off the main thread. `stateIn(viewModelScope)` collects on Main.immediate, so
+            // without this the sort, the grouping and a count per category were all UI-thread
+            // work over the whole library — repeated on every keystroke.
+            .flowOn(defaultDispatcher)
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = WorkflowListUiState(),
+            )
 
     fun setQuery(value: String) {
         query.value = value

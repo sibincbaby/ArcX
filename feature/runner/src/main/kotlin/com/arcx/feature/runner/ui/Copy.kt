@@ -1,7 +1,6 @@
 package com.arcx.feature.runner.ui
 
 import com.arcx.core.model.AiError
-import java.util.Locale
 
 /**
  * User-facing wording for every failure the executor can hand back. Each one names what went
@@ -51,7 +50,3 @@ internal fun AiError.body(): String = when (this) {
 
 // The picker's own short labels for input and output now come from :core:designsystem, beside
 // the WiringChips that draw them, so every surface states a workflow's wiring identically.
-
-internal fun formatDuration(millis: Long): String =
-    if (millis < 1_000) "${millis}ms"
-    else String.format(Locale.getDefault(), "%.1fs", millis / 1_000f)

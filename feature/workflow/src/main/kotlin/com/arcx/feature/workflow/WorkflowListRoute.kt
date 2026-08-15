@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -69,6 +70,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcx.core.designsystem.component.CountPill
 import com.arcx.core.designsystem.component.EmptyState
+import com.arcx.core.designsystem.component.ErrorCard
 import com.arcx.core.designsystem.component.SectionLabel
 import com.arcx.core.designsystem.component.WiringChips
 import com.arcx.core.designsystem.component.WorkflowIcon
@@ -179,6 +181,16 @@ private fun WorkflowListScreen(
 
             when {
                 state.loading -> Unit
+
+                // Ahead of the empty states on purpose: a library that could not be read is also
+                // an empty list, and "No workflows yet" would be a confident lie about it.
+                state.error != null -> item(key = "error") {
+                    ErrorCard(
+                        title = "Your library could not be loaded",
+                        message = state.error,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                    )
+                }
 
                 state.libraryIsEmpty -> item(key = "empty") {
                     EmptyState(
@@ -395,7 +407,9 @@ private fun WorkflowRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
+                // A floor, not a fixed height: at fontScale 2.0 the name and the wiring chips are
+                // taller than 64dp together, and a fixed row cropped the chips off the bottom.
+                .heightIn(min = 64.dp)
                 .combinedClickable(onClick = onRun, onLongClick = onConfigure),
             verticalAlignment = Alignment.CenterVertically,
         ) {

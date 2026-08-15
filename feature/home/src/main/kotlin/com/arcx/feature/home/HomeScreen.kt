@@ -69,13 +69,15 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcx.core.designsystem.component.EmptyState
+import com.arcx.core.designsystem.component.ErrorCard
 import com.arcx.core.designsystem.component.WorkflowIcon
+import com.arcx.core.designsystem.format.formatDuration
+import com.arcx.core.designsystem.format.relativeTime
 import com.arcx.core.designsystem.theme.MetaTextStyle
 import com.arcx.core.designsystem.theme.Motion
 import com.arcx.core.designsystem.theme.tint
 import com.arcx.core.designsystem.theme.warningTint
 import com.arcx.core.model.RunSummary
-import java.util.Locale
 
 private val TileShape = RoundedCornerShape(18.dp)
 private const val GRID_COLUMNS = 3
@@ -173,6 +175,16 @@ private fun HomeScreen(
             }
 
             when {
+                // Ahead of the empty states: a failed read leaves the grid just as empty as a
+                // fresh install does, and "No workflows yet" would be blaming the user for it.
+                state.error != null -> item(key = "error") {
+                    ErrorCard(
+                        title = "Couldn't load your workflows",
+                        message = state.error,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
+                }
+
                 state.loading -> Unit
 
                 state.libraryIsEmpty -> item(key = "first-run") {
@@ -379,7 +391,7 @@ private fun RowScope.WorkflowTile(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = tile.averageMs?.let { "${formatSeconds(it)} avg" } ?: "not run yet",
+                    text = tile.averageMs?.let { "${formatDuration(it)} avg" } ?: "not run yet",
                     style = MetaTextStyle,
                     color = MaterialTheme.colorScheme.outline,
                     maxLines = 1,
@@ -526,7 +538,10 @@ private fun RunRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
+                // A minimum, not a fixed height, for the same reason the tile grid above uses
+                // IntrinsicSize.Max: at a large font scale these two lines are taller than 56dp,
+                // and a fixed row clips the "9m ago · gemini" line off the bottom.
+                .heightIn(min = 56.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             WorkflowIcon(icon = run.workflowIcon, size = 36.dp)
@@ -547,7 +562,7 @@ private fun RunRow(
                 )
             }
             Text(
-                text = formatSeconds(run.durationMs),
+                text = formatDuration(run.durationMs),
                 style = MetaTextStyle,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -569,20 +584,4 @@ private fun RunRow(
 private fun runSubtitle(run: RunSummary, nowMillis: Long): String {
     val source = run.model.ifBlank { run.providerLabel }.ifBlank { "no provider" }
     return "${relativeTime(run.startedAt, nowMillis)} · $source"
-}
-
-/** Coarse on purpose: past a day the exact hour is noise on a screen about "just now". */
-private fun relativeTime(startedAt: Long, nowMillis: Long): String {
-    val elapsed = nowMillis - startedAt
-    return when {
-        elapsed < 60_000L -> "just now"
-        elapsed < 3_600_000L -> "${elapsed / 60_000L}m ago"
-        elapsed < 86_400_000L -> "${elapsed / 3_600_000L}h ago"
-        else -> "${elapsed / 86_400_000L}d ago"
-    }
-}
-
-private fun formatSeconds(durationMs: Long): String = when {
-    durationMs < 60_000L -> String.format(Locale.getDefault(), "%.1fs", durationMs / 1000.0)
-    else -> "${durationMs / 60_000L}m ${(durationMs % 60_000L) / 1_000L}s"
 }

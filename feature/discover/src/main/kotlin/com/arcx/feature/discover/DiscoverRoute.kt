@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -69,6 +70,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcx.core.designsystem.component.CountPill
 import com.arcx.core.designsystem.component.EmptyState
 import com.arcx.core.designsystem.component.SectionLabel
+import com.arcx.core.designsystem.component.WiringChips
 import com.arcx.core.designsystem.component.WorkflowIcon
 import com.arcx.core.designsystem.component.shortLabel
 import com.arcx.core.designsystem.theme.MetaTextStyle
@@ -426,7 +428,9 @@ private fun GalleryRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
+                // A floor, not a fixed height: at fontScale 2.0 the name and the wiring chips are
+                // taller than 64dp together, and a fixed row cropped the chips off the bottom.
+                .heightIn(min = 64.dp)
                 .clickable(onClick = onClick),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -445,13 +449,13 @@ private fun GalleryRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "${spec.category.label} · ${spec.input.label} → ${spec.output.label}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Spacer(Modifier.height(4.dp))
+                // The same chips, in the same words, as the library row this becomes once it is
+                // installed. The sheet below still spells the wiring out in full — it has the
+                // room, and it is the screen someone reads rather than scans.
+                WiringChips(
+                    input = spec.input.shortLabel,
+                    output = spec.output.shortLabel,
                 )
             }
             InstallButton(installed = installed, busy = busy, onInstall = onInstall)

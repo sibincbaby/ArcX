@@ -53,6 +53,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.arcx.core.designsystem.format.formatDuration
 import com.arcx.core.designsystem.component.ErrorCard
 import com.arcx.core.designsystem.component.MarkdownText
 import com.arcx.core.designsystem.component.StreamingIndicator

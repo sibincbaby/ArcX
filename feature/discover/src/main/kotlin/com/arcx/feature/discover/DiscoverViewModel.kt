@@ -42,37 +42,46 @@ internal data class DiscoverUiState(
     val selected: WorkflowSpec? = null,
     val busy: Boolean = false,
     val message: String? = null,
-) {
-    val visible: List<WorkflowSpec>
-        get() = gallery.filter { spec ->
-            (category == null || spec.category == category) &&
-                (
-                    query.isBlank() ||
-                        spec.name.contains(query, ignoreCase = true) ||
-                        spec.prompt.contains(query, ignoreCase = true)
-                    )
-        }
-
+    /**
+     * [gallery] narrowed by [query] and [category]. A plain field, not a computed one: as a
+     * getter the whole gallery was filtered again on every recomposition, which is every frame
+     * of a scroll and every keystroke, rather than once per change.
+     */
+    val visible: List<WorkflowSpec> = emptyList(),
     /**
      * The gallery's opening picks — the first few entries the user has not already taken. It
      * empties itself as they install things, which is the point: a "start here" shelf that
      * still says start here after twenty workflows is furniture.
      */
-    val startHere: List<WorkflowSpec>
-        get() = if (query.isNotBlank() || category != null) {
-            emptyList()
-        } else {
-            gallery.filterNot { it.name in installedNames }.take(START_HERE_COUNT)
-        }
-
+    val startHere: List<WorkflowSpec> = emptyList(),
     /** Only the categories the bundled gallery actually contains, with their sizes. */
-    val categoryCounts: List<Pair<WorkflowCategory, Int>>
-        get() = WorkflowCategory.entries
-            .map { it to gallery.count { spec -> spec.category == it } }
-            .filter { it.second > 0 }
-}
+    val categoryCounts: List<Pair<WorkflowCategory, Int>> = emptyList(),
+)
 
 private const val START_HERE_COUNT = 3
+
+/**
+ * Fills in the three derived lists from what they are derived from. Every write to the state
+ * goes through here, so a field cannot be left describing an older gallery or an older query.
+ */
+private fun DiscoverUiState.withDerived(): DiscoverUiState = copy(
+    visible = gallery.filter { spec ->
+        (category == null || spec.category == category) &&
+            (
+                query.isBlank() ||
+                    spec.name.contains(query, ignoreCase = true) ||
+                    spec.prompt.contains(query, ignoreCase = true)
+                )
+    },
+    startHere = if (query.isNotBlank() || category != null) {
+        emptyList()
+    } else {
+        gallery.filterNot { it.name in installedNames }.take(START_HERE_COUNT)
+    },
+    categoryCounts = WorkflowCategory.entries
+        .map { it to gallery.count { spec -> spec.category == it } }
+        .filter { it.second > 0 },
+)
 
 @HiltViewModel
 internal class DiscoverViewModel @Inject constructor(
@@ -104,7 +113,7 @@ internal class DiscoverViewModel @Inject constructor(
                         .workflows
                 }
             }
-            _uiState.update { state ->
+            updateState { state ->
                 result.fold(
                     onSuccess = { state.copy(loading = false, gallery = it) },
                     onFailure = { state.copy(loading = false, galleryError = "The bundled gallery could not be read.") },
@@ -113,28 +122,36 @@ internal class DiscoverViewModel @Inject constructor(
         }
         viewModelScope.launch {
             workflows.observeAll().collect { library ->
-                _uiState.update { state ->
+                updateState { state ->
                     state.copy(installedNames = library.mapTo(mutableSetOf()) { it.name })
                 }
             }
         }
     }
 
-    fun setQuery(value: String) = _uiState.update { it.copy(query = value) }
+    /**
+     * The one way into [_uiState]. Deriving on the way in — rather than in getters the UI reads —
+     * is what keeps the filtering and the counting to once per change instead of once per frame.
+     */
+    private fun updateState(transform: (DiscoverUiState) -> DiscoverUiState) {
+        _uiState.update { transform(it).withDerived() }
+    }
 
-    fun setCategory(value: WorkflowCategory?) = _uiState.update { it.copy(category = value) }
+    fun setQuery(value: String) = updateState { it.copy(query = value) }
 
-    fun clearFilters() = _uiState.update { it.copy(query = "", category = null) }
+    fun setCategory(value: WorkflowCategory?) = updateState { it.copy(category = value) }
 
-    fun select(spec: WorkflowSpec?) = _uiState.update { it.copy(selected = spec) }
+    fun clearFilters() = updateState { it.copy(query = "", category = null) }
 
-    fun dismissMessage() = _uiState.update { it.copy(message = null) }
+    fun select(spec: WorkflowSpec?) = updateState { it.copy(selected = spec) }
+
+    fun dismissMessage() = updateState { it.copy(message = null) }
 
     fun install(spec: WorkflowSpec, openEditor: Boolean = false) {
         viewModelScope.launch {
-            _uiState.update { it.copy(busy = true) }
+            updateState { it.copy(busy = true) }
             val saved = runCatching { saveWorkflow(spec.toWorkflow()) }
-            _uiState.update {
+            updateState {
                 it.copy(
                     busy = false,
                     selected = null,
@@ -155,7 +172,7 @@ internal class DiscoverViewModel @Inject constructor(
      */
     fun import(uri: Uri) {
         viewModelScope.launch {
-            _uiState.update { it.copy(busy = true) }
+            updateState { it.copy(busy = true) }
             val specs = runCatching {
                 withContext(io) {
                     val text = context.contentResolver.openInputStream(uri)
@@ -178,13 +195,13 @@ internal class DiscoverViewModel @Inject constructor(
                 },
                 onFailure = { "That does not look like an ArcX workflow file" },
             )
-            _uiState.update { it.copy(busy = false, message = message) }
+            updateState { it.copy(busy = false, message = message) }
         }
     }
 
     fun export(uri: Uri) {
         viewModelScope.launch {
-            _uiState.update { it.copy(busy = true) }
+            updateState { it.copy(busy = true) }
             val count = runCatching {
                 val all = workflows.observeAll().first()
                 val bundle = WorkflowBundle(workflows = all.map { it.toSpec() })
@@ -196,7 +213,7 @@ internal class DiscoverViewModel @Inject constructor(
                 }
                 all.size
             }
-            _uiState.update {
+            updateState {
                 it.copy(
                     busy = false,
                     message = count.fold(
