@@ -116,8 +116,18 @@ Note for anyone testing on Xiaomi: Doze exemption is **not** what decides whethe
 restarts. MIUI's own Autostart whitelist governs that, and without it clearing ArcX from Recents
 kills the bubble permanently. Settings → Entry points links to both screens.
 
-`QUERY_ALL_PACKAGES` is deliberately **not** requested — a `<queries>` element covers what
-ArcX needs, and the broad permission would trigger a further Play declaration for no benefit.
+`QUERY_ALL_PACKAGES` is deliberately **not** requested: it would trigger a further Play declaration
+for no benefit.
+
+There is also **no `<queries>` element** — an earlier version of this file said one "covers what ArcX
+needs", which was not true of the code. Nothing about the Play submission depends on that: declaring
+neither is the conservative position, and it is one less thing for a reviewer to read.
+
+The one place package visibility could bite is `ArcxEntrypoints.autostartIntent()`, which resolves
+vendor Autostart screens by package name. **On Xiaomi/MIUI this is verified working at targetSdk 36**
+— the Autostart link appears and opens the real screen — so there is no known symptom to fix. The
+six non-Xiaomi entries are untested on hardware. See the last bullet of `architecture.md` §6 before
+adding anything to the manifest for this.
 
 ---
 

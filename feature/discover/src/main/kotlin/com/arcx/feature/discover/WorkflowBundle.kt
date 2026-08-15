@@ -41,9 +41,21 @@ internal data class WorkflowSpec(
     val sortOrder: Int = 0,
 )
 
-// Unknown keys are ignored so a file written by a newer build still imports on an older one.
+/**
+ * Both decoding flags are what makes a file written by a newer build still import on an older one,
+ * and each covers a different half of it.
+ *
+ * `ignoreUnknownKeys` drops fields this build has never heard of. It does **not** cover unknown
+ * *enum values*, which is the half that used to be missing: one `"input": "VIDEO"` threw, and since
+ * the file is decoded in a single call the user was told the whole thing "does not look like an
+ * ArcX workflow file" — losing every workflow in it, not just the one field.
+ * `coerceInputValues` falls back to the property's declared default instead, which is the safe
+ * direction here: SELECTED_TEXT is the least invasive input source and BOTTOM_SHEET only shows the
+ * answer. Coercion needs a default to fall back to, so `name` and `prompt` still fail correctly.
+ */
 internal val bundleJson = Json {
     ignoreUnknownKeys = true
+    coerceInputValues = true
     prettyPrint = true
 }
 

@@ -14,6 +14,10 @@ its evidence — is in `docs/architecture.md`. Read it before any structural cha
   and an **open design decision**. Read it before touching anything to do with screen capture,
   `{{screen_text}}`, or the accessibility service.
 - `docs/benchmarking.md` — how to measure startup and frame timing, and the current baseline.
+- `docs/workflow-sharing.md` — the `.json` bundle format, what breaks when a file leaves the
+  device it was made on, and the trust rules for importing someone else's prompt. Read it before
+  touching `WorkflowBundle`/`WorkflowSpec`, import/export, or the bundled asset files. **Design
+  only** — nothing in it is built except the enum-coercion fix.
 
 ---
 

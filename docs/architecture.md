@@ -3,8 +3,11 @@
 Written for whoever — human or agent — picks this up next. `CLAUDE.md` is the short operational
 version; this is the reasoning behind it, including the parts that went wrong.
 
-Everything here was true at commit `6853f1c`. Where a claim was verified on hardware, it says so.
-Where it was not, it says that too.
+The body of this document was written against commit `6853f1c`. HEAD is now `bd70585`, seven commits
+later, and the document has **not** been re-audited against them as a whole — individual claims have
+been corrected in place as they were found wrong, but treat anything not marked as verified as
+dating from `6853f1c`. Where a claim was verified on hardware, it says so. Where it was not, it says
+that too.
 
 ---
 
@@ -38,8 +41,11 @@ It also showed the opening:
 | Fixed built-in actions via custom intents | User-defined workflows via `arcx://run/{id}` |
 | No widget | Glance widget |
 
-Arc requests `QUERY_ALL_PACKAGES`; ArcX deliberately uses a `<queries>` element instead, because the
-broad permission triggers a Play declaration and buys nothing.
+Arc requests `QUERY_ALL_PACKAGES`; ArcX does not, which is right — the broad permission triggers a
+Play declaration and buys nothing. **But it does not declare a `<queries>` element either**, which
+an earlier version of this file claimed it did. There is no `<queries>` in any of the four
+manifests; that sentence was written from the plan rather than from the code. See §6 for the one
+thing that may actually need one.
 
 ---
 
@@ -209,3 +215,24 @@ observation.
 - Accessibility button unreliable in Samsung's floating-menu mode (above).
 - The `BOOT_COMPLETED` receiver has **never been tested**, because that means rebooting the test
   device. On an OEM that blocks autostart it is likely blocked too.
+- **No `<queries>` element. This is a real risk for six of the seven vendor Autostart entries, and
+  a verified non-issue for the one that matters most.** `ArcxEntrypoints.autostartIntent()` picks a
+  vendor screen by calling `packageManager.resolveActivity` against seven third-party OEM
+  components (`ArcxEntrypoints.kt:79-86`, `:144-145`, list at `:171-184`). On API 30+ — ArcX targets
+  36 — package visibility filtering can make `resolveActivity` return null for a package the app
+  cannot see, indistinguishably from the component genuinely not existing, which would silently
+  drop the Autostart row from Settings → Entry points.
+
+  **It does not happen for Xiaomi, verified end to end on a MIUI device at targetSdk 36.**
+  `com.miui.securitycenter/…AutoStartManagementActivity` resolved, the Autostart row appeared, the
+  button opened MIUI's real Autostart screen with ArcX listed under "36 apps aren't allowed to
+  autostart", and enabling it there produced `restartCount=1` with the bubble returning on its own.
+  That is the entry with the complete story behind it (see §4), and filtering did not interfere
+  with it.
+
+  The **other six are untested on hardware** — ColorOS (two entries), Vivo, Huawei, Letv, Asus. The
+  concern is theoretical for those and may never materialise, exactly as it failed to for Xiaomi.
+  So: no `<queries>` element has been added, and a blanket one would be a fix for a problem that
+  is not known to exist. If one is ever added it should list those specific components rather than
+  being a catch-all. `batteryOptimisationIntent()` (`:71`) resolves a platform Settings action and
+  is not affected in the same way.

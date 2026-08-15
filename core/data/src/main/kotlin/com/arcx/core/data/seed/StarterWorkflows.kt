@@ -64,8 +64,22 @@ fun WorkflowSpec.toWorkflow(now: Long, id: String = UUID.randomUUID().toString()
         updatedAt = now,
     )
 
-// Unknown keys are ignored so a bundle written by a newer build still imports on an older one.
-private val bundleJson = Json { ignoreUnknownKeys = true }
+/**
+ * Both flags exist so a bundle written by a newer build still imports on an older one, and each
+ * covers a different half of that.
+ *
+ * `ignoreUnknownKeys` drops fields this build has never heard of. It does **not** cover unknown
+ * *enum values*, which is the half that used to be missing: a single `"input": "VIDEO"` threw, and
+ * because the whole file is decoded in one call it took every other workflow in that file with it.
+ * `coerceInputValues` falls back to the property's declared default instead — and the defaults are
+ * the safe direction, since SELECTED_TEXT is the least invasive input source and BOTTOM_SHEET only
+ * shows the answer. Every enum field here has a default, which is what makes coercion possible;
+ * `name` and `prompt` have none and so still, correctly, fail the entry.
+ */
+private val bundleJson = Json {
+    ignoreUnknownKeys = true
+    coerceInputValues = true
+}
 
 fun parseWorkflowBundle(json: String): WorkflowBundle = bundleJson.decodeFromString(json)
 
