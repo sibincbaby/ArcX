@@ -422,6 +422,10 @@ private fun RowScope.WorkflowTile(
                     style = MetaTextStyle,
                     color = MaterialTheme.colorScheme.outline,
                     maxLines = 1,
+                    // The tile is the narrowest column in the app, so at a large font scale this
+                    // line runs out of room too — without this it stops mid-word ("not run") and
+                    // reads as a different, wrong sentence rather than as truncated text.
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }

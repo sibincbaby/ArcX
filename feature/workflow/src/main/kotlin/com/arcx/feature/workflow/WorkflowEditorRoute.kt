@@ -13,9 +13,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -825,7 +827,14 @@ private fun OutputStep(
     Spacer(Modifier.height(Spacing.Lg))
     OutputTarget.entries.chunked(2).forEach { pair ->
         Row(
-            modifier = Modifier.padding(bottom = 9.dp),
+            // Intrinsic height, as the Home grid does: the two cards in a row carry descriptions
+            // of different lengths, and left to themselves they end at different heights, which
+            // reads as a broken grid. The cards fillMaxHeight to match it — a child of a
+            // fixed-height Row is still measured with minHeight 0, so this alone would size the
+            // Row and leave the borders ragged.
+            modifier = Modifier
+                .height(IntrinsicSize.Max)
+                .padding(bottom = 9.dp),
             horizontalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             pair.forEach { target ->
@@ -907,6 +916,7 @@ private fun RowScope.OutputCard(
     Column(
         modifier = Modifier
             .weight(1f)
+            .fillMaxHeight()
             .minimumInteractiveComponentSize()
             .heightIn(min = 100.dp)
             .clip(shape)

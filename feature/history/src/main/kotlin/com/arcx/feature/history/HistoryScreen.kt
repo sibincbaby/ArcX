@@ -4,10 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -317,6 +319,12 @@ private fun StatRow(stats: RunStats) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // Intrinsic height, as the Home grid does: at a large font scale "runs today" wraps
+            // to two lines and "median" does not, and three tiles of different heights read as
+            // three unrelated boxes. The tiles themselves fillMaxHeight to match it — a child of
+            // a fixed-height Row is still measured with minHeight 0, so this alone would size
+            // the Row and leave the backgrounds ragged.
+            .height(IntrinsicSize.Max)
             .padding(horizontal = Spacing.Gutter, vertical = Spacing.Md),
         // 9dp stays off the 4dp scale: the three tiles share what the gutters leave, so changing
         // the gap between them resizes all three rather than moving anything.
@@ -341,6 +349,7 @@ private fun RowScope.StatTile(value: String, label: String, accent: Color? = nul
     Column(
         modifier = Modifier
             .weight(1f)
+            .fillMaxHeight()
             .background(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.shapes.large)
             // 13dp is off the scale and left there: it is the inset that keeps a titleLarge
             // number optically centred in a tile only two lines tall.

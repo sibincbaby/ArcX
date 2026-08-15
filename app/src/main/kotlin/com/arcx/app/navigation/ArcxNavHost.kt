@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
@@ -149,7 +150,14 @@ fun ArcxNavHost(
         NavHost(
             navController = navController,
             startDestination = TopLevelDestination.HOME.route,
-            modifier = Modifier.padding(padding),
+            // padding offsets the content off the bar; consumeWindowInsets tells everything
+            // below that those insets are now spent. Without the second half every tab's own
+            // Scaffold reads the navigation-bar inset again and pads for it a second time —
+            // measured as a 48dp dead band above the bar, with the last row cut through its
+            // glyphs. Both are needed: consuming alone would let content run under the bar.
+            modifier = Modifier
+                .padding(padding)
+                .consumeWindowInsets(padding),
             // Two transitions, picked by what the move actually means. Tabs are peers and get a
             // fast fade-through; anything pushed on top of them rises and comes back down. The
             // library's own default is one 700ms crossfade for both, which made a push look
