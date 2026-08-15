@@ -194,7 +194,6 @@ class FakeScreenContextProvider(
         return if (canCapture) freshJpeg else null
     }
     override fun currentPackage(): String? = if (available) packageName else null
-    override suspend fun replaceFocusedText(text: String): Boolean = false
 }
 
 /** Records what was stored and removed instead of touching a filesystem. */

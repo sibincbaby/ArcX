@@ -40,12 +40,6 @@ interface ScreenContextProvider {
 
     /** Package name of the foreground app, or null when unavailable. */
     fun currentPackage(): String?
-
-    /**
-     * Replaces the text in the currently focused editable field.
-     * Returns false when there is no focused editable node — callers must fall back to copy.
-     */
-    suspend fun replaceFocusedText(text: String): Boolean
 }
 
 interface ClipboardAccess {

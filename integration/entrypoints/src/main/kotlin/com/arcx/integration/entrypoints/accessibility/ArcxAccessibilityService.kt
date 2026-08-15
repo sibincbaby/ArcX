@@ -6,7 +6,6 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -571,29 +570,6 @@ class ArcxAccessibilityService : AccessibilityService() {
             val child = runCatching { node.getChild(index) }.getOrNull() ?: continue
             collect(child, depth + 1, visited, into)
         }
-    }
-
-    /**
-     * Writes [text] into whatever editable field currently has input focus.
-     *
-     * Returns false rather than throwing when nothing is focused or the focus is not editable —
-     * that is the ordinary case (a web page, a read-only screen) and callers fall back to putting
-     * the result on the clipboard.
-     */
-    fun setFocusedText(text: String): Boolean {
-        val focused = runCatching { findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()
-            ?: return false
-        if (!focused.isEditable) return false
-        // Same trap as the screen read, with worse consequences: if the runner sheet has a field of
-        // its own focused, writing here would overwrite what the user typed into ArcX instead of
-        // replacing text in the app they came from. Falling back to the clipboard is the safe loss.
-        if (focused.packageName?.toString() == packageName) return false
-        val arguments = Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        }
-        return runCatching {
-            focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
-        }.getOrDefault(false)
     }
 }
 

@@ -4,7 +4,6 @@ package com.arcx.core.model
 class Attachment(
     val mimeType: String,
     val bytes: ByteArray,
-    val fileName: String? = null,
 )
 
 /** Everything a provider needs to produce one completion. */

@@ -256,12 +256,10 @@ internal fun ProviderEditScreen(
 
             Spacer(Modifier.height(12.dp))
             SettingsGroup {
-                SettingsSwitchRow(
-                    title = "Stream responses",
-                    subtitle = "Show the answer as it is written instead of waiting for the end.",
-                    checked = state.streaming,
-                    onCheckedChange = viewModel::onStreamingChange,
-                )
+                // A "Stream responses" switch used to sit here, bound to ProviderConfig.streaming.
+                // Nothing in :core:ai reads that field — GeminiProvider always streams — so the
+                // switch was a control that changed nothing. The field stays (dropping it needs a
+                // Room migration); bring the switch back when a provider actually honours it.
                 SettingsSwitchRow(
                     title = "Default provider",
                     subtitle = "Workflows that do not pick one use this.",

@@ -11,7 +11,6 @@ import com.arcx.core.domain.execution.ExecutionState
 import com.arcx.core.domain.repository.HistoryRepository
 import com.arcx.core.domain.repository.ProviderRepository
 import com.arcx.core.domain.repository.SettingsRepository
-import com.arcx.core.domain.repository.WorkflowRepository
 import com.arcx.core.model.AiChunk
 import com.arcx.core.model.AiError
 import com.arcx.core.model.AiRequest
@@ -25,7 +24,6 @@ import com.arcx.core.model.WorkflowInput
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import java.time.Instant
 import java.time.ZoneId
@@ -38,7 +36,6 @@ import javax.inject.Inject
  * here, so provider resolution, variable expansion, history and error mapping only exist once.
  */
 class ExecuteWorkflowUseCase @Inject constructor(
-    private val workflows: WorkflowRepository,
     private val providers: ProviderRepository,
     private val history: HistoryRepository,
     private val settings: SettingsRepository,
@@ -178,17 +175,6 @@ class ExecuteWorkflowUseCase @Inject constructor(
                 RunStatus.SUCCESS, text, null, storedImage, recordHistory,
             )
             emit(ExecutionState.Success(text, time.nowMillis() - startedAt))
-        }
-    }
-
-    /** Entry points launched from a shortcut, widget or tile only carry a workflow id. */
-    fun byId(workflowId: String, input: WorkflowInput): Flow<ExecutionState> = flow {
-        val workflow = workflows.get(workflowId)
-        if (workflow == null) {
-            emit(ExecutionState.Preparing)
-            emit(ExecutionState.Failed(AiError.Unknown(IllegalStateException("Workflow $workflowId no longer exists"))))
-        } else {
-            emitAll(invoke(workflow, input))
         }
     }
 

@@ -17,7 +17,6 @@
     <string name="arcx_bubble_notification_title">ArcX bubble is on</string>
     <string name="arcx_bubble_notification_text">Tap the bubble to run a workflow from any app.</string>
     <string name="arcx_bubble_stop">Stop</string>
-    <string name="arcx_bubble_content_description">ArcX</string>
     <string name="arcx_bubble_title">Run on this app</string>
     <!-- What the panel will feed the workflow if the launch carries no text of its own. -->
     <string name="arcx_bubble_source">clipboard or screen</string>

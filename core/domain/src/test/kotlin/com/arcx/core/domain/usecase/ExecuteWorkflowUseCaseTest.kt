@@ -50,7 +50,6 @@ class ExecuteWorkflowUseCaseTest {
     private val input = WorkflowInput(text = "hello", sourcePackage = "com.example.notes")
 
     private fun useCase(
-        workflows: FakeWorkflowRepository = FakeWorkflowRepository(listOf(workflow)),
         providers: FakeProviderRepository = FakeProviderRepository(openAi, "sk-test"),
         history: FakeHistoryRepository = FakeHistoryRepository(),
         settings: FakeSettingsRepository = FakeSettingsRepository(),
@@ -59,7 +58,6 @@ class ExecuteWorkflowUseCaseTest {
         screenshots: FakeScreenshotStore = FakeScreenshotStore(),
         clipboard: FakeClipboard = FakeClipboard("clip"),
     ) = ExecuteWorkflowUseCase(
-        workflows = workflows,
         providers = providers,
         history = history,
         settings = settings,
@@ -260,26 +258,6 @@ class ExecuteWorkflowUseCaseTest {
         val run = history.records.single()
         assertEquals(2_000, run.inputPreview.length)
         assertEquals(2_000, run.outputPreview!!.length)
-    }
-
-    @Test
-    fun `byId fails cleanly for a workflow that no longer exists`() = runTest {
-        useCase(workflows = FakeWorkflowRepository(emptyList()))
-            .byId("gone", input).test {
-                assertEquals(ExecutionState.Preparing, awaitItem())
-                assertTrue((awaitItem() as ExecutionState.Failed).error is AiError.Unknown)
-                awaitComplete()
-            }
-    }
-
-    @Test
-    fun `byId runs the stored workflow`() = runTest {
-        useCase().byId("w1", input).test {
-            assertEquals(ExecutionState.Preparing, awaitItem())
-            skipItems(2)
-            assertTrue(awaitItem() is ExecutionState.Success)
-            awaitComplete()
-        }
     }
 
     // A shortcut, widget or tile launch carries only an id — the text has to come from somewhere.
@@ -491,7 +469,6 @@ class ExecuteWorkflowUseCaseTest {
         val history = FakeHistoryRepository()
         val shot = Workflow(id = "s1", name = "Look", prompt = "Describe it", input = InputSource.SCREENSHOT)
         val useCase = useCase(
-            workflows = FakeWorkflowRepository(listOf(shot)),
             history = history,
             screen = FakeScreenContextProvider(
                 available = true,
@@ -520,7 +497,6 @@ class ExecuteWorkflowUseCaseTest {
         val shot = Workflow(id = "s1", name = "Look", prompt = "Describe it", input = InputSource.SCREENSHOT)
         val fromRunner = byteArrayOf(9, 9, 9)
         val useCase = useCase(
-            workflows = FakeWorkflowRepository(listOf(shot)),
             history = history,
             screenshots = screenshots,
             // Capture is available, but the caller already brought a frame, so nothing here is used.
@@ -552,7 +528,6 @@ class ExecuteWorkflowUseCaseTest {
         val clipboard = FakeClipboard("clip")
 
         useCase(
-            workflows = FakeWorkflowRepository(listOf(plain)),
             screen = screen,
             clipboard = clipboard,
         )(plain, input).collect { }
@@ -569,7 +544,6 @@ class ExecuteWorkflowUseCaseTest {
         val provider = FakeAiProvider(deltas = listOf("ok"))
 
         useCase(
-            workflows = FakeWorkflowRepository(listOf(reader)),
             provider = provider,
             screen = screen,
         )(reader, input).collect { }

@@ -130,7 +130,6 @@ class ProviderEditViewModel @Inject constructor(
 
     fun onDefaultModelChange(value: String) = _uiState.update { it.copy(defaultModel = value) }
 
-    fun onStreamingChange(enabled: Boolean) = _uiState.update { it.copy(streaming = enabled) }
 
     fun onMakeDefaultChange(enabled: Boolean) = _uiState.update { it.copy(makeDefault = enabled) }
 

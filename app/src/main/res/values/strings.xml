@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ArcX</string>
-    <string name="app_tagline">Your workflows. One tap away.</string>
     <!-- Names the launcher entry that opens the picker straight away, not the full app. -->
     <string name="arcx_actions_label">ArcX Actions</string>
     <!-- Long-press menu on the app icon. Launchers ellipsise the short label at roughly 10 chars. -->

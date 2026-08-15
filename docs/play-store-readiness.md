@@ -26,10 +26,6 @@ Play Console → Policy → App content → **Accessibility API usage**.
 > current window through `AccessibilityNodeInfo` and puts that text into the prompt that is
 > sent to the AI provider the user has connected with their own API key.
 >
-> The service also performs `ACTION_SET_TEXT` on the focused editable field, so an action such
-> as "Fix grammar" can replace the text the user is editing in place rather than making them
-> copy and paste the result.
->
 > Separately, the service requests the accessibility button
 > (`FLAG_REQUEST_ACCESSIBILITY_BUTTON`) so a user who wants it can assign that button — or the
 > volume-key shortcut — to opening ArcX's workflow list. That is a launch trigger only: the
@@ -109,7 +105,7 @@ included in backups (`allowBackup=false`, with explicit `dataExtractionRules` ex
 | `POST_NOTIFICATIONS` | Notification output target; bubble's ongoing notification | Results shown in the sheet instead |
 | `RECEIVE_BOOT_COMPLETED` | Restore the bubble after reboot | User re-enables manually |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Ask to exempt the bubble from Doze | Bubble may be stopped in the background |
-| `BIND_ACCESSIBILITY_SERVICE` | `{{screen_text}}`, `{{current_app}}`, in-place text replacement | Those inputs render empty; selection and share entry points unaffected |
+| `BIND_ACCESSIBILITY_SERVICE` | `{{screen_text}}`, `{{current_app}}` | Those inputs render empty; selection and share entry points unaffected |
 
 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is a **restricted** permission and needs its own Play
 declaration. The justification is the bubble: a user-enabled, always-available launcher that has

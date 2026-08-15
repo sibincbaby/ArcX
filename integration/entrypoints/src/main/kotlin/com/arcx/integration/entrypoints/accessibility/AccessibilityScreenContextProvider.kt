@@ -79,8 +79,4 @@ internal class AccessibilityScreenContextProvider @Inject constructor(
             )
         }
     }
-
-    override suspend fun replaceFocusedText(text: String): Boolean = withContext(io) {
-        AccessibilityServiceHolder.current()?.setFocusedText(text) ?: false
-    }
 }

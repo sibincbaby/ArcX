@@ -33,7 +33,7 @@ The two capabilities in `accessibility_service_config.xml` are independent. Taki
 |---|---|---|---|
 | Vision workflows (`InputSource.SCREENSHOT`) | ✅ required | — | — |
 | `{{screen_text}}` | — | ✅ required | — |
-| `replaceFocusedText` (`findFocus` + `ACTION_SET_TEXT`) | — | ✅ required | — |
+| ~~`replaceFocusedText`~~ — **deleted, see below** | — | (would need it) | — |
 | `{{current_app}}` | — | — | ✅ from `AccessibilityEvent.getPackageName()` |
 | **Replace selected text from the selection menu** | — | — | ✅ `ACTION_PROCESS_TEXT` + `setResult` |
 
@@ -65,8 +65,14 @@ the result channel. Already noted in CLAUDE.md.)
 
 Accessibility is therefore needed for text-writing only in one case: **writing into a focused field
 when the run did not start from the selection menu** — from the bubble, tile or a shortcut, where
-there is no `setResult` channel. That is what `replaceFocusedText` exists for, and it is currently
-**implemented but called by nothing**.
+there is no `setResult` channel. `replaceFocusedText` existed for that and was never called by
+anything, so **it has been deleted** along with the service's `setFocusedText`, and the Play
+declaration no longer claims ArcX can replace text in place.
+
+Restoring it is a small job — `ACTION_SET_TEXT` on `findFocus(FOCUS_INPUT)`, guarded against
+writing into ArcX's own window — but it is the *only* remaining reason to keep
+`canRetrieveWindowContent` beyond `{{screen_text}}`, so weigh it against the section below rather
+than adding it back reflexively.
 
 ### Cost of dropping `canRetrieveWindowContent`
 

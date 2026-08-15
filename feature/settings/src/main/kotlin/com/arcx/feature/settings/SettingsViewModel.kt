@@ -4,7 +4,6 @@ import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arcx.core.domain.capture.SystemSurfaces
-import com.arcx.core.domain.repository.HistoryRepository
 import com.arcx.core.domain.repository.ProviderRepository
 import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.domain.repository.WorkflowRepository
@@ -69,7 +68,6 @@ data class SettingsUiState(
 class SettingsViewModel @Inject constructor(
     private val providers: ProviderRepository,
     private val workflows: WorkflowRepository,
-    private val history: HistoryRepository,
     private val settings: SettingsRepository,
     private val clearHistory: ClearHistoryUseCase,
     private val deleteAllScreenshots: DeleteAllScreenshotsUseCase,
@@ -195,18 +193,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { clearHistory() }
     }
 
-    fun onDeleteProvider(id: String) {
-        viewModelScope.launch {
-            providers.delete(id)
-            // Leaving a dangling default would make every workflow fall back to a provider
-            // that no longer exists, which reads as "nothing works" rather than "reconnect".
-            settings.update { current ->
-                if (current.defaultProviderId == id) current.copy(defaultProviderId = null)
-                else current
-            }
-        }
-    }
-
     /**
      * A genuine factory reset: workflows, run history, provider configurations and the API keys
      * in the encrypted vault, plus every preference including onboarding. Nothing survives,
@@ -214,7 +200,7 @@ class SettingsViewModel @Inject constructor(
      */
     fun onDeleteAllLocalData() {
         viewModelScope.launch {
-            history.clear()
+            clearHistory()
             providers.observeAll().first().forEach { providers.delete(it.id) }
             workflows.observeAll().first().forEach { workflows.delete(it.id) }
             settings.update { UserSettings() }

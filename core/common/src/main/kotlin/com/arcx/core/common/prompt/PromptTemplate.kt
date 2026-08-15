@@ -2,61 +2,24 @@ package com.arcx.core.common.prompt
 
 /**
  * A placeholder the workflow builder offers in its variable picker. [name] is what the user
- * types inside `{{ }}`; the rest is copy for the picker sheet.
+ * types inside `{{ }}`, and it is also what the picker draws on the chip — the raw token is the
+ * thing being inserted, so a prettier label would only hide what the user is about to get.
  */
 data class PromptVariable(
     val name: String,
-    val label: String,
-    val description: String,
 ) {
     val token: String get() = "{{$name}}"
 
     companion object {
-        val SELECTED_TEXT = PromptVariable(
-            name = "selected_text",
-            label = "Selected text",
-            description = "Text the user highlighted in another app",
-        )
-        val SCREEN_TEXT = PromptVariable(
-            name = "screen_text",
-            label = "Screen text",
-            description = "Everything readable on screen. Needs the accessibility service",
-        )
-        val CLIPBOARD = PromptVariable(
-            name = "clipboard",
-            label = "Clipboard",
-            description = "Current clipboard contents",
-        )
-        val INPUT = PromptVariable(
-            name = "input",
-            label = "Input",
-            description = "Whatever the workflow was fired with, whichever entry point was used",
-        )
-        val SHARE_TEXT = PromptVariable(
-            name = "share_text",
-            label = "Shared text",
-            description = "Text sent to ArcX through the share sheet",
-        )
-        val SHARE_SUBJECT = PromptVariable(
-            name = "share_subject",
-            label = "Shared subject",
-            description = "Subject line of a shared item, such as an email or article title",
-        )
-        val TODAY = PromptVariable(
-            name = "today",
-            label = "Today's date",
-            description = "Current date, e.g. 2026-08-10",
-        )
-        val NOW = PromptVariable(
-            name = "now",
-            label = "Current time",
-            description = "Current time of day, e.g. 14:05",
-        )
-        val CURRENT_APP = PromptVariable(
-            name = "current_app",
-            label = "Current app",
-            description = "Package name of the app the workflow was fired from",
-        )
+        val SELECTED_TEXT = PromptVariable(name = "selected_text")
+        val SCREEN_TEXT = PromptVariable(name = "screen_text")
+        val CLIPBOARD = PromptVariable(name = "clipboard")
+        val INPUT = PromptVariable(name = "input")
+        val SHARE_TEXT = PromptVariable(name = "share_text")
+        val SHARE_SUBJECT = PromptVariable(name = "share_subject")
+        val TODAY = PromptVariable(name = "today")
+        val NOW = PromptVariable(name = "now")
+        val CURRENT_APP = PromptVariable(name = "current_app")
 
         val ALL: List<PromptVariable> = listOf(
             SELECTED_TEXT,
