@@ -13,8 +13,10 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.arcx.core.designsystem.theme.ThemeMode
 import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.domain.repository.WorkflowRepository
+import com.arcx.core.model.ThemePreference
 import com.arcx.integration.entrypoints.ArcxDeepLinks
 import com.arcx.integration.entrypoints.R
 import com.arcx.integration.entrypoints.accessibility.AccessibilityServiceHolder
@@ -33,6 +35,12 @@ import javax.inject.Inject
 private const val MAX_PANEL_WORKFLOWS = 8
 
 private const val CHANNEL_ID = "arcx_bubble"
+
+/**
+ * Must not collide with the runner's result notification id in `OutputApplier` — notification ids
+ * are per-app, not per-channel, so a shared one means a workflow that finishes in the shade
+ * replaces the foreground-service notification this bubble is legally required to keep posted.
+ */
 private const val NOTIFICATION_ID = 4201
 
 /**
@@ -132,6 +140,16 @@ class OverlayService : Service() {
                 .map { it.bubbleOpensFullList }
                 .distinctUntilChanged()
                 .collect { bubble.updateOpensFullList(it) }
+        }
+
+        // The bubble is Compose in a window this service owns, so nothing else is in a position to
+        // tell it what the user picked in Settings — an overlay has no Activity to inherit a theme
+        // from. Both values travel together because they decide one thing between them.
+        scope.launch {
+            settingsRepository.settings
+                .map { it.theme.toThemeMode() to it.dynamicColor }
+                .distinctUntilChanged()
+                .collect { (mode, dynamic) -> bubble.updateTheme(mode, dynamic) }
         }
     }
 
@@ -264,4 +282,14 @@ class OverlayService : Service() {
             runCatching { context.stopService(Intent(context, OverlayService::class.java)) }
         }
     }
+}
+
+/**
+ * The stored preference is `:core:model`, the theme's input is `:core:designsystem`, and neither
+ * module may know about the other — so every host translates for itself, as MainActivity does.
+ */
+private fun ThemePreference.toThemeMode(): ThemeMode = when (this) {
+    ThemePreference.LIGHT -> ThemeMode.LIGHT
+    ThemePreference.DARK -> ThemeMode.DARK
+    ThemePreference.SYSTEM -> ThemeMode.SYSTEM
 }

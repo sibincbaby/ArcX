@@ -36,7 +36,13 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private const val CHANNEL_ID = "arcx_results"
-private const val NOTIFICATION_ID = 4201
+
+/**
+ * Must not collide with the bubble's foreground-service id in `OverlayService` — it was 4201 there
+ * too, and because notification ids are per-app rather than per-channel, a workflow finishing in
+ * the shade while the bubble was running silently replaced the service's ongoing notification.
+ */
+private const val NOTIFICATION_ID = 4202
 private const val NOTIFICATION_PREVIEW = 4_000
 
 /** Where a file save was headed, held while the user is off in the system picker. */

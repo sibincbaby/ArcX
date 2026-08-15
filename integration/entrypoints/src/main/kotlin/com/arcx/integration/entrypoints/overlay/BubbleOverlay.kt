@@ -20,6 +20,8 @@ import androidx.core.animation.doOnEnd
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.arcx.core.designsystem.theme.ArcXTheme
+import com.arcx.core.designsystem.theme.ThemeMode
 import com.arcx.core.model.Workflow
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -108,6 +110,14 @@ internal class BubbleOverlay(
     private var opensFullList = false
     private var workflows by mutableStateOf(emptyList<Workflow>())
 
+    /**
+     * Mirrors UserSettings.theme and UserSettings.dynamicColor; see [updateTheme]. Compose state
+     * rather than plain fields, unlike [opensFullList], because these are read during composition
+     * and a settings change has to repaint the bubble where it stands.
+     */
+    private var themeMode by mutableStateOf(ThemeMode.SYSTEM)
+    private var dynamicColor by mutableStateOf(true)
+
     /** True from the tap until the panel actually opens, while a frame grab is in flight. */
     private var expanding = false
 
@@ -145,6 +155,19 @@ internal class BubbleOverlay(
     }
 
     /**
+     * The user's theme, pushed in from the service like the workflows are.
+     *
+     * The overlay cannot read it for itself: there is no Activity and no ViewModel here, and the
+     * settings flow lives on the service's scope. Without this the bubble drew whatever the system
+     * happened to be doing, so LIGHT/DARK and the dynamic-colour switch were ignored by the one
+     * surface the user sees most often.
+     */
+    fun updateTheme(mode: ThemeMode, dynamic: Boolean) {
+        themeMode = mode
+        dynamicColor = dynamic
+    }
+
+    /**
      * Adds the bubble to the window manager. Returns false if the overlay permission was revoked
      * between the caller's check and this call, which the system reports by throwing.
      */
@@ -170,7 +193,10 @@ internal class BubbleOverlay(
             // torn down: exactly when the host is destroyed, never on a stray detach.
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
-                OverlayTheme {
+                // The same theme the two Activities use, from a Service context. That is only safe
+                // because ArcXTheme's status-bar SideEffect treats a non-Activity view context as
+                // "no status bar to tint" rather than casting blindly — an overlay window has none.
+                ArcXTheme(themeMode = themeMode, dynamicColor = dynamicColor) {
                     if (expanded) {
                         BubblePanel(
                             workflows = workflows,

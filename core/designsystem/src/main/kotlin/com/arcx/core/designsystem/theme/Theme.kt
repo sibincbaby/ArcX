@@ -40,8 +40,15 @@ fun ArcXTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            // Nullable on purpose: this theme is also composed from the bubble's overlay, whose
+            // view context is the Service, not an Activity. A hard cast there is a
+            // ClassCastException on first composition — which is why the overlay used to carry a
+            // forked copy of this whole function. An overlay window has no status bar of its own
+            // to tint, so having nothing to do here is the correct outcome, not a degraded one.
+            val window = (view.context as? Activity)?.window
+            if (window != null) {
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            }
         }
     }
 

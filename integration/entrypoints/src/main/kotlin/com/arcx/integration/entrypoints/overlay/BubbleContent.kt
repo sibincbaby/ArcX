@@ -1,13 +1,11 @@
 package com.arcx.integration.entrypoints.overlay
 
-import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,14 +22,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -39,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,27 +49,6 @@ import com.arcx.integration.entrypoints.R
 
 /** Matches the collapsed window size the touch handling assumes when snapping to an edge. */
 internal val BubbleSize = 56.dp
-
-/**
- * Material colours without [com.arcx.core.designsystem.theme.ArcXTheme].
- *
- * ArcXTheme casts the local view's context to an Activity so it can tint the status bar. In an
- * overlay that context is the Service, and the cast is a ClassCastException on first composition.
- * Everything else about the theme is reproduced here so the bubble still follows Material You.
- */
-@Composable
-internal fun OverlayTheme(content: @Composable () -> Unit) {
-    val darkTheme = isSystemInDarkTheme()
-    val context = LocalContext.current
-    val colorScheme: ColorScheme = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-
-        darkTheme -> darkColorScheme()
-        else -> lightColorScheme()
-    }
-    MaterialTheme(colorScheme = colorScheme, content = content)
-}
 
 /**
  * The collapsed handle. It has no click or drag modifier on purpose — the gesture is owned by the
