@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
@@ -57,6 +56,7 @@ import com.arcx.core.designsystem.component.ErrorCard
 import com.arcx.core.designsystem.component.StepBar
 import com.arcx.core.designsystem.component.TintedIcon
 import com.arcx.core.designsystem.theme.MetaTextStyle
+import com.arcx.core.designsystem.theme.Spacing
 import kotlinx.coroutines.launch
 
 private const val PAGE_COUNT = 4
@@ -87,7 +87,7 @@ fun OnboardingRoute(
             StepBar(
                 current = pager.currentPage,
                 total = PAGE_COUNT,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp),
+                modifier = Modifier.padding(horizontal = Spacing.Xxl, vertical = 14.dp),
             )
 
             HorizontalPager(
@@ -111,7 +111,7 @@ fun OnboardingRoute(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 20.dp),
+                    .padding(horizontal = Spacing.Xxl, vertical = Spacing.Xl),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 when (pager.currentPage) {
@@ -132,7 +132,7 @@ fun OnboardingRoute(
                         Button(
                             onClick = { viewModel.onFinish(onDone) },
                             enabled = !state.finishing,
-                            shape = RoundedCornerShape(16.dp),
+                            shape = MaterialTheme.shapes.medium,
                         ) { Text("Start using ArcX") }
                     }
 
@@ -156,7 +156,10 @@ private fun PageColumn(content: @Composable ColumnScope.() -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 32.dp, vertical = 24.dp),
+            // Wider than the screen gutter on purpose. An onboarding page is one paragraph alone
+            // in the window with nothing to line up against, and 32dp is what stops a line of
+            // body text running the full width of a phone.
+            .padding(horizontal = Spacing.Xxxl, vertical = Spacing.Xxl),
         verticalArrangement = Arrangement.Center,
         content = content,
     )
@@ -165,15 +168,15 @@ private fun PageColumn(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 private fun WelcomePage() = PageColumn {
     Text("✨", fontSize = 64.sp)
-    Spacer(Modifier.height(24.dp))
+    Spacer(Modifier.height(Spacing.Xxl))
     Text("ArcX", style = MaterialTheme.typography.displaySmall)
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(Spacing.Sm))
     Text(
         "Your workflows. One tap away.",
         style = MaterialTheme.typography.titleMedium,
         color = MaterialTheme.colorScheme.primary,
     )
-    Spacer(Modifier.height(24.dp))
+    Spacer(Modifier.height(Spacing.Xxl))
     Text(
         "Build an AI action once — rewrite this, summarise that, translate the other — then " +
             "fire it from wherever you already are. Share sheet, selected text, a shortcut.",
@@ -185,15 +188,15 @@ private fun WelcomePage() = PageColumn {
 @Composable
 private fun ByokPage() = PageColumn {
     Text("🔑", fontSize = 56.sp)
-    Spacer(Modifier.height(24.dp))
+    Spacer(Modifier.height(Spacing.Xxl))
     Text("Your key. Your data.", style = MaterialTheme.typography.headlineMedium)
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(Spacing.Xl))
     Text(
         "ArcX has no account and no server. You bring an API key from an AI provider you " +
             "already trust, and it stays encrypted on this device.",
         style = MaterialTheme.typography.bodyLarge,
     )
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Spacing.Lg))
     Text(
         "When you run a workflow, your text goes from this phone straight to that provider and " +
             "the answer comes straight back. Nothing passes through us, so there is no bill " +
@@ -233,10 +236,10 @@ private fun ConnectPage(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
-    Spacer(Modifier.height(24.dp))
+    Spacer(Modifier.height(Spacing.Xxl))
     OnboardingLabel("Provider")
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -271,14 +274,14 @@ private fun ConnectPage(
         }
     }
 
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Spacing.Lg))
     OnboardingLabel("API key")
     OutlinedTextField(
         value = state.apiKey,
         onValueChange = onApiKeyChange,
         placeholder = { Text("Paste it here") },
         singleLine = true,
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         visualTransformation =
             if (state.revealKey) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
@@ -313,13 +316,14 @@ private fun ConnectPage(
     )
 
     apiKeyUrl(state.type)?.let { url ->
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(Spacing.Md))
+        val linkShape = MaterialTheme.shapes.medium
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(44.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
+                .clip(linkShape)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, linkShape)
                 .clickable { uriHandler.openUri(url) },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
@@ -330,7 +334,7 @@ private fun ConnectPage(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(17.dp),
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(Spacing.Sm))
             Text(
                 text = "Get a free key at ${url.removePrefix("https://").substringBefore('/')}",
                 style = MaterialTheme.typography.labelLarge,
@@ -339,20 +343,20 @@ private fun ConnectPage(
         }
     }
 
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(Spacing.Md))
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Button(onClick = onTest, enabled = state.canTest, shape = RoundedCornerShape(14.dp)) {
+        Button(onClick = onTest, enabled = state.canTest, shape = MaterialTheme.shapes.medium) {
             Text("Test")
         }
         if (state.test is TestState.Running) {
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(Spacing.Md))
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
         }
     }
 
     when (val test = state.test) {
         is TestState.Success -> {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.Md))
             Text(
                 "Connected. ${test.modelCount} model${if (test.modelCount == 1) "" else "s"} available.",
                 style = MaterialTheme.typography.bodyMedium,
@@ -361,7 +365,7 @@ private fun ConnectPage(
         }
 
         is TestState.Failure -> {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.Md))
             ErrorCard(title = "Could not connect", message = test.message)
         }
 
@@ -370,7 +374,7 @@ private fun ConnectPage(
 
     Spacer(Modifier.height(14.dp))
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -406,7 +410,7 @@ private fun NoteRow(
             contentDescription = null,
             tint = MaterialTheme.colorScheme.outline,
             modifier = Modifier
-                .padding(top = 1.dp, end = 8.dp)
+                .padding(top = 1.dp, end = Spacing.Sm)
                 .size(15.dp),
         )
         Text(
@@ -420,12 +424,12 @@ private fun NoteRow(
 @Composable
 private fun DonePage(connected: Boolean) = PageColumn {
     Text(if (connected) "🎉" else "👋", fontSize = 56.sp)
-    Spacer(Modifier.height(24.dp))
+    Spacer(Modifier.height(Spacing.Xxl))
     Text(
         if (connected) "You're set up" else "Have a look around",
         style = MaterialTheme.typography.headlineMedium,
     )
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Spacing.Lg))
     Text(
         if (connected) {
             "A handful of ready-made workflows are waiting on your home screen. Run one, then " +
@@ -444,11 +448,11 @@ private fun ForwardButton(label: String, enabled: Boolean, onClick: () -> Unit) 
     Button(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         modifier = Modifier.height(50.dp),
     ) {
         Text(label)
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(Spacing.Sm))
         Icon(
             imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
             contentDescription = null,

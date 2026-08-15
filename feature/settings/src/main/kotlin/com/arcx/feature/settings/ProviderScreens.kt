@@ -48,6 +48,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcx.core.designsystem.component.EmptyState
 import com.arcx.core.designsystem.component.ErrorCard
+import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.model.ProviderType
 
 @Composable
@@ -111,7 +112,7 @@ internal fun ProvidersScreen(
                 "Keys are stored in this device's encrypted keystore. ArcX never uploads them, " +
                     "because there is nowhere for it to upload them to.",
             )
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(Spacing.Xxl))
         }
     }
 }
@@ -150,11 +151,11 @@ internal fun ProviderEditScreen(
             }
         },
     ) { padding ->
-        // Everything lines up on the same 16dp gutter that SettingsGroup uses, so the fields
-        // and the switch card share one edge.
+        // Everything lines up on the same screen gutter SettingsGroup uses, so the fields and the
+        // switch card share one edge.
         val field = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = Spacing.Gutter)
 
         Column(
             Modifier
@@ -165,12 +166,12 @@ internal fun ProviderEditScreen(
             Text(
                 text = "Provider",
                 style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(horizontal = 16.dp),
+                modifier = Modifier.padding(horizontal = Spacing.Gutter),
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Spacing.Sm))
             FlowRow(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = Spacing.Gutter),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
             ) {
                 ProviderType.entries.forEach { type ->
                     val supported = type in state.supportedTypes
@@ -191,11 +192,11 @@ internal fun ProviderEditScreen(
                     text = "Coming soon: ${comingSoon.joinToString { displayName(it) }}.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = Spacing.Gutter),
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(Spacing.Xl))
             OutlinedTextField(
                 value = state.label,
                 onValueChange = viewModel::onLabelChange,
@@ -204,7 +205,7 @@ internal fun ProviderEditScreen(
                 modifier = field,
             )
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.Md))
             OutlinedTextField(
                 value = state.baseUrl,
                 onValueChange = viewModel::onBaseUrlChange,
@@ -214,7 +215,7 @@ internal fun ProviderEditScreen(
                 modifier = field,
             )
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.Md))
             if (state.needsKey) {
                 ApiKeyField(
                     value = state.apiKey,
@@ -227,7 +228,9 @@ internal fun ProviderEditScreen(
                 apiKeyUrl(state.type)?.let { url ->
                     TextButton(
                         onClick = { uriHandler.openUri(url) },
-                        modifier = Modifier.padding(horizontal = 8.dp),
+                        // 8, not the gutter: a TextButton carries 12dp of its own, and the label
+                        // is what has to land on the gutter, not the button's invisible edge.
+                        modifier = Modifier.padding(horizontal = Spacing.Sm),
                     ) {
                         Text("Get a ${displayName(state.type)} key")
                         Spacer(Modifier.width(6.dp))
@@ -240,11 +243,11 @@ internal fun ProviderEditScreen(
                         "API key to enter.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = Spacing.Gutter),
                 )
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.Md))
             OutlinedTextField(
                 value = state.defaultModel,
                 onValueChange = viewModel::onDefaultModelChange,
@@ -254,7 +257,7 @@ internal fun ProviderEditScreen(
                 modifier = field,
             )
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.Md))
             SettingsGroup {
                 // A "Stream responses" switch used to sit here, bound to ProviderConfig.streaming.
                 // Nothing in :core:ai reads that field — GeminiProvider always streams — so the
@@ -268,18 +271,18 @@ internal fun ProviderEditScreen(
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(Spacing.Xl))
             TestConnection(
                 state = state.test,
                 enabled = state.canTest,
                 onTest = viewModel::onTestConnection,
-                modifier = Modifier.padding(horizontal = 16.dp),
+                modifier = Modifier.padding(horizontal = Spacing.Gutter),
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(Spacing.Xxl))
             Row(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(horizontal = Spacing.Gutter),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
             ) {
                 Button(
                     onClick = { viewModel.onSave(onDone) },
@@ -287,7 +290,7 @@ internal fun ProviderEditScreen(
                 ) { Text("Save") }
                 OutlinedButton(onClick = onDone) { Text("Cancel") }
             }
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(Spacing.Xxxl))
         }
     }
 
@@ -363,13 +366,13 @@ private fun TestConnection(
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(onClick = onTest, enabled = enabled) { Text("Test connection") }
             if (state is TestState.Running) {
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(Spacing.Md))
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             }
         }
         when (state) {
             is TestState.Success -> {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(Spacing.Sm))
                 Text(
                     text = "Connected. ${state.modelCount} model${if (state.modelCount == 1) "" else "s"} available.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -378,7 +381,7 @@ private fun TestConnection(
             }
 
             is TestState.Failure -> {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(Spacing.Sm))
                 ErrorCard(title = "Could not connect", message = state.message)
             }
 

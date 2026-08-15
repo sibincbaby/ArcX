@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Icon
@@ -23,13 +22,14 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-
-internal val CardShape = RoundedCornerShape(20.dp)
+import com.arcx.core.designsystem.theme.Spacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,11 +68,13 @@ internal fun SettingsGroup(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = CardShape,
+            // 6dp is off the scale on purpose: two stacked groups meet at 12dp, which is the gap
+            // that belongs between them. Halving a gap is the one place a half-step is right.
+            .padding(horizontal = Spacing.Gutter, vertical = 6.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Column(Modifier.padding(vertical = 4.dp), content = content)
+        Column(Modifier.padding(vertical = Spacing.Xs), content = content)
     }
 }
 
@@ -88,8 +90,22 @@ internal fun SettingsRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            // A settings row is tall enough already; the floor is here so a row that ever loses
+            // its subtitle cannot quietly drop under the 48dp minimum. Role, because a bare
+            // `clickable` announces nothing — the same pairing the shared primitives use.
+            .then(
+                if (onClick != null) {
+                    Modifier
+                        .minimumInteractiveComponentSize()
+                        .clickable(role = Role.Button, onClick = onClick)
+                } else {
+                    Modifier
+                },
+            )
+            // The card's interior, not the screen gutter — SettingsGroup already stated that one
+            // further out, and a row is only ever drawn inside a group. 14dp vertical is between
+            // two steps and stays there: it puts a two-line row on the Material list-item rhythm.
+            .padding(horizontal = Spacing.Lg, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
@@ -97,7 +113,7 @@ internal fun SettingsRow(
                 imageVector = icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(end = 16.dp),
+                modifier = Modifier.padding(end = Spacing.Lg),
             )
         }
         Column(Modifier.weight(1f)) {
@@ -112,7 +128,7 @@ internal fun SettingsRow(
             }
         }
         if (trailing != null) {
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(Spacing.Md))
             trailing()
         }
     }
@@ -145,6 +161,8 @@ internal fun SettingsNote(text: String, modifier: Modifier = Modifier) {
         text = text,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(horizontal = 32.dp, vertical = 8.dp),
+        // Deliberately not the gutter: a note is subordinate to the group above it and is indented
+        // past that edge to say so. It happens to be the top step of the scale, not a screen inset.
+        modifier = modifier.padding(horizontal = Spacing.Xxxl, vertical = Spacing.Sm),
     )
 }

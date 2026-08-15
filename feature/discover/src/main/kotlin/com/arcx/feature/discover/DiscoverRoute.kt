@@ -5,7 +5,6 @@ package com.arcx.feature.discover
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -17,7 +16,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,13 +23,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.SearchOff
@@ -39,7 +34,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,8 +43,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,19 +55,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.arcx.core.designsystem.component.ArcxListRow
+import com.arcx.core.designsystem.component.ArcxListRowIconSize
+import com.arcx.core.designsystem.component.ArcxPill
+import com.arcx.core.designsystem.component.ArcxSearchField
 import com.arcx.core.designsystem.component.CountPill
 import com.arcx.core.designsystem.component.EmptyState
+import com.arcx.core.designsystem.component.LoadingState
 import com.arcx.core.designsystem.component.SectionLabel
 import com.arcx.core.designsystem.component.WiringChips
 import com.arcx.core.designsystem.component.WorkflowIcon
 import com.arcx.core.designsystem.component.shortLabel
 import com.arcx.core.designsystem.theme.MetaTextStyle
 import com.arcx.core.designsystem.theme.PromptTextStyle
+import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.designsystem.theme.tint
 import com.arcx.core.model.WorkflowCategory
 
@@ -153,14 +152,18 @@ private fun DiscoverScreen(
     ) { padding ->
         LazyColumn(
             modifier = Modifier.padding(padding),
-            contentPadding = PaddingValues(bottom = 32.dp),
+            contentPadding = PaddingValues(bottom = Spacing.Xxxl),
         ) {
             item(key = "title") {
                 Title(onImport = onImport, onExport = onExport)
             }
 
             item(key = "search") {
-                SearchField(query = state.query, onQueryChange = onQueryChange)
+                ArcxSearchField(
+                    query = state.query,
+                    onQueryChange = onQueryChange,
+                    placeholder = "Search the gallery",
+                )
             }
 
             val start = state.startHere
@@ -184,7 +187,10 @@ private fun DiscoverScreen(
 
             val visible = state.visible
             when {
-                state.loading -> Unit
+                // A spinner rather than nothing. This branch drew a blank screen, which is what
+                // an empty gallery looks like — and the gallery is read from an asset, so the
+                // one thing it can never be is empty.
+                state.loading -> item(key = "loading") { LoadingState() }
 
                 state.galleryError != null -> item(key = "error") {
                     EmptyState(
@@ -256,7 +262,9 @@ private fun Title(onImport: () -> Unit, onExport: () -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 20.dp, end = 8.dp, top = 12.dp),
+                // Less on the trailing edge: the overflow button carries its own touch padding,
+                // so a full gutter there would push the icon a finger-width off the margin.
+                .padding(start = Spacing.Gutter, end = Spacing.Sm, top = Spacing.Md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -297,36 +305,13 @@ private fun Title(onImport: () -> Unit, onExport: () -> Unit) {
                 "anywhere. Anything you install becomes yours to edit.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp),
+            modifier = Modifier.padding(
+                start = Spacing.Gutter,
+                end = Spacing.Gutter,
+                top = Spacing.Xs,
+            ),
         )
     }
-}
-
-@Composable
-private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
-    TextField(
-        value = query,
-        onValueChange = onQueryChange,
-        singleLine = true,
-        placeholder = { Text("Search the gallery") },
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Outlined.Close, contentDescription = "Clear search")
-                }
-            }
-        },
-        shape = RoundedCornerShape(14.dp),
-        colors = TextFieldDefaults.colors(
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            disabledIndicatorColor = Color.Transparent,
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-    )
 }
 
 @Composable
@@ -335,8 +320,8 @@ private fun StartHereRow(specs: List<WorkflowSpec>, onSelect: (WorkflowSpec) -> 
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = Spacing.Gutter),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
     ) {
         specs.forEach { spec -> StartHereCard(spec, onClick = { onSelect(spec) }) }
     }
@@ -347,9 +332,13 @@ private fun StartHereCard(spec: WorkflowSpec, onClick: () -> Unit) {
     val tint = spec.category.tint()
     Column(
         modifier = Modifier
+            // A card is not a list row, so nothing above gives this one a touch target or says
+            // out loud that it is a button. Both are stated here rather than left to the
+            // 150x132dp box happening to be big enough.
+            .minimumInteractiveComponentSize()
             .width(150.dp)
             .height(132.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .clip(MaterialTheme.shapes.large)
             // The category's own hue fading into the surface, so the shelf reads as a set of
             // suggestions rather than three more rows that happen to be sideways.
             .background(
@@ -357,7 +346,9 @@ private fun StartHereCard(spec: WorkflowSpec, onClick: () -> Unit) {
                     listOf(tint.container, MaterialTheme.colorScheme.surfaceContainerLow),
                 ),
             )
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
+            // 14dp, off the scale deliberately: the card's height is fixed, and Spacing.Lg here
+            // costs 4dp of the room the name has to wrap in before it clips at a large font scale.
             .padding(14.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -369,7 +360,7 @@ private fun StartHereCard(spec: WorkflowSpec, onClick: () -> Unit) {
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(Spacing.Xs))
             Text(
                 // Short labels here, not the gallery's longer ones: a 150dp card truncates
                 // "Selected text → Bottom sheet" to nothing worth reading.
@@ -394,8 +385,8 @@ private fun CategoryFilters(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+            .padding(horizontal = Spacing.Gutter, vertical = Spacing.Md),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
     ) {
         CountPill(
             label = "All",
@@ -414,6 +405,10 @@ private fun CategoryFilters(
     }
 }
 
+/**
+ * The gallery's row is the app's row, so an entry looks the same here as it will in the library
+ * once it is installed — which is the whole promise of installing it.
+ */
 @Composable
 private fun GalleryRow(
     spec: WorkflowSpec,
@@ -424,94 +419,67 @@ private fun GalleryRow(
     onInstall: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.padding(horizontal = 20.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                // A floor, not a fixed height: at fontScale 2.0 the name and the wiring chips are
-                // taller than 64dp together, and a fixed row cropped the chips off the bottom.
-                .heightIn(min = 64.dp)
-                .clickable(onClick = onClick),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    ArcxListRow(
+        title = spec.name,
+        modifier = modifier,
+        leading = {
             val tint = spec.category.tint()
             WorkflowIcon(
                 icon = spec.icon,
-                size = 38.dp,
+                size = ArcxListRowIconSize,
                 container = tint.container,
                 content = tint.content,
             )
-            Spacer(Modifier.width(13.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = spec.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(4.dp))
-                // The same chips, in the same words, as the library row this becomes once it is
-                // installed. The sheet below still spells the wiring out in full — it has the
-                // room, and it is the screen someone reads rather than scans.
-                WiringChips(
-                    input = spec.input.shortLabel,
-                    output = spec.output.shortLabel,
-                )
-            }
-            InstallButton(installed = installed, busy = busy, onInstall = onInstall)
-        }
-        if (showDivider) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHigh)
-        }
-    }
+        },
+        subtitle = {
+            // The same chips, in the same words, as the library row this becomes once it is
+            // installed. The sheet below still spells the wiring out in full — it has the
+            // room, and it is the screen someone reads rather than scans.
+            WiringChips(
+                input = spec.input.shortLabel,
+                output = spec.output.shortLabel,
+            )
+        },
+        trailing = { InstallButton(installed = installed, busy = busy, onInstall = onInstall) },
+        onClick = onClick,
+        showDivider = showDivider,
+    )
 }
 
 /**
  * One tap installs. The row still opens the detail sheet, which is where the whole prompt is —
  * a gallery entry is a local copy the user can read, edit or delete a second later, so making
  * them read it first was a ceremony that only slowed down the honest case.
+ *
+ * Both states are [ArcxPill], which is what this was a hand-rolled copy of. "Added" passes no
+ * onClick, so it is a label rather than a control that would do nothing when pressed.
  */
 @Composable
 private fun InstallButton(installed: Boolean, busy: Boolean, onInstall: () -> Unit) {
-    val shape = RoundedCornerShape(9.dp)
     if (installed) {
-        Row(
-            modifier = Modifier
-                .height(32.dp)
-                .padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Check,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.size(15.dp),
-            )
-            Text(
-                text = "Added",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.outline,
-            )
-        }
+        ArcxPill(
+            label = "Added",
+            leading = {
+                Icon(
+                    imageVector = Icons.Outlined.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(15.dp),
+                )
+            },
+            content = MaterialTheme.colorScheme.outline,
+        )
         return
     }
 
-    Box(
-        modifier = Modifier
-            .height(32.dp)
-            .clip(shape)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-            .clickable(enabled = !busy, onClick = onInstall)
-            .padding(horizontal = 13.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "Install",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
-    }
+    // The label in primary, the shell outlined: an install is the one thing worth doing on this
+    // row, but it is still one row of many and a filled pill on every one of them is a wall.
+    ArcxPill(
+        label = "Install",
+        onClick = onInstall,
+        enabled = !busy,
+        content = MaterialTheme.colorScheme.primary,
+    )
 }
 
 /** The whole prompt, for anyone who wants to read it before or after taking a copy. */
@@ -527,7 +495,7 @@ private fun GalleryDetailSheet(
         Column(
             Modifier
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = Spacing.Gutter),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 WorkflowIcon(
@@ -536,7 +504,7 @@ private fun GalleryDetailSheet(
                     container = spec.category.tint().container,
                     content = spec.category.tint().content,
                 )
-                Column(Modifier.padding(start = 14.dp)) {
+                Column(Modifier.padding(start = Spacing.Md)) {
                     Text(spec.name, style = MaterialTheme.typography.titleLarge)
                     Text(
                         text = "${spec.category.label} · ${spec.input.label} → ${spec.output.label}",
@@ -554,12 +522,14 @@ private fun GalleryDetailSheet(
             SheetLabel("Prompt")
             PromptBlock(spec.prompt)
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(Spacing.Xl))
             Button(
                 onClick = onInstall,
                 enabled = !installing && !installed,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(if (installed) "Already in your library" else "Add to my workflows") }
+            // Not a gap between two things but the sheet's own bottom clearance, so it is sized
+            // to keep the button clear of the gesture bar rather than by the grid.
             Spacer(Modifier.height(40.dp))
         }
     }
@@ -571,7 +541,7 @@ private fun SheetLabel(text: String) {
         text = text,
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 16.dp, bottom = 6.dp),
+        modifier = Modifier.padding(top = Spacing.Lg, bottom = Spacing.Sm),
     )
 }
 
@@ -579,9 +549,9 @@ private fun SheetLabel(text: String) {
 private fun PromptBlock(text: String) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(text = text, style = PromptTextStyle, modifier = Modifier.padding(14.dp))
+        Text(text = text, style = PromptTextStyle, modifier = Modifier.padding(Spacing.Lg))
     }
 }

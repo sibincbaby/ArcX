@@ -1,7 +1,6 @@
 package com.arcx.feature.history
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,14 +11,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cancel
@@ -57,14 +54,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.arcx.core.designsystem.component.ArcxListRow
+import com.arcx.core.designsystem.component.ArcxListRowIconSize
 import com.arcx.core.designsystem.component.EmptyState
 import com.arcx.core.designsystem.component.ErrorCard
+import com.arcx.core.designsystem.component.LoadingState
 import com.arcx.core.designsystem.component.MarkdownText
 import com.arcx.core.designsystem.component.SectionLabel
 import com.arcx.core.designsystem.component.WorkflowIcon
 import com.arcx.core.designsystem.format.formatDuration
 import com.arcx.core.designsystem.format.relativeTime
 import com.arcx.core.designsystem.theme.MetaTextStyle
+import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.designsystem.theme.warningTint
 import com.arcx.core.model.RunRecord
 import com.arcx.core.model.RunStatus
@@ -118,8 +119,19 @@ private fun HistoryScreen(
                 ErrorCard(
                     title = "Couldn't load your history",
                     message = state.error,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(
+                        horizontal = Spacing.Gutter,
+                        vertical = Spacing.Md,
+                    ),
                 )
+            }
+
+            // Before every claim this screen makes about the user's history, because during the
+            // first read it does not know any of them yet. Without this the list falls through
+            // to the stats, which say "0 runs today" about a database that has not answered.
+            state.loading -> Column(Modifier.padding(padding)) {
+                Title(canClear = false, onClear = {})
+                LoadingState()
             }
 
             // Being switched off is a different situation from having nothing to show, and
@@ -136,7 +148,7 @@ private fun HistoryScreen(
                 )
             }
 
-            !state.loading && state.days.isEmpty() -> Column(Modifier.padding(padding)) {
+            state.days.isEmpty() -> Column(Modifier.padding(padding)) {
                 Title(canClear = false, onClear = {})
                 EmptyState(
                     icon = Icons.Outlined.History,
@@ -149,7 +161,7 @@ private fun HistoryScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                contentPadding = PaddingValues(bottom = 24.dp),
+                contentPadding = PaddingValues(bottom = Spacing.Xxl),
             ) {
                 item(key = "title") {
                     Title(canClear = true, onClear = { confirmClear = true })
@@ -163,17 +175,70 @@ private fun HistoryScreen(
                 state.days.forEach { day ->
                     item(key = "day-${day.label}") { SectionLabel(day.label) }
                     itemsIndexed(day.runs, key = { _, run -> run.id }) { index, run ->
+                        val failed = run.status == RunStatus.FAILED
+                        val warning = warningTint()
                         // No animateItem here, unlike the library and the gallery: those are
                         // filtered and sorted, so their rows genuinely move. Runs are only ever
                         // prepended, so all this bought was a fade on the new top row — paid for
                         // on every frame of the one list in the app long enough to really
                         // scroll. Measured at roughly a millisecond a frame, which is close to
                         // this device's noise floor, but it is work with nothing to show for it.
-                        RunRow(
-                            run = run,
-                            nowMillis = state.nowMillis,
-                            showDivider = index < day.runs.lastIndex,
+                        ArcxListRow(
+                            title = run.workflowName,
+                            leading = {
+                                WorkflowIcon(
+                                    icon = run.workflowIcon,
+                                    size = ArcxListRowIconSize,
+                                    container = if (failed) {
+                                        warning.container
+                                    } else {
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    },
+                                )
+                            },
+                            subtitle = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    // An icon, not a thumbnail: the list must never decode a
+                                    // screen capture per row.
+                                    if (run.hasScreenshot) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Image,
+                                            contentDescription = "Ran on a screenshot",
+                                            modifier = Modifier
+                                                .padding(end = 5.dp)
+                                                .size(13.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    Text(
+                                        text = "${relativeTime(run.startedAt, state.nowMillis)} · " +
+                                            runDetail(run),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (failed) {
+                                            warning.content
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            },
+                            trailing = {
+                                // A failure's duration says nothing useful, so the row spends
+                                // that space on why.
+                                if (!failed) {
+                                    Text(
+                                        text = formatDuration(run.durationMs),
+                                        style = MetaTextStyle,
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                }
+                                StatusIcon(run.status)
+                            },
                             onClick = { onOpenRun(run.id) },
+                            showDivider = index < day.runs.lastIndex,
                         )
                     }
                 }
@@ -217,7 +282,7 @@ private fun Title(canClear: Boolean, onClear: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, end = 8.dp, top = 12.dp),
+            .padding(start = Spacing.Gutter, end = Spacing.Sm, top = Spacing.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -252,7 +317,9 @@ private fun StatRow(stats: RunStats) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = Spacing.Gutter, vertical = Spacing.Md),
+        // 9dp stays off the 4dp scale: the three tiles share what the gutters leave, so changing
+        // the gap between them resizes all three rather than moving anything.
         horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         StatTile(value = stats.runsToday.toString(), label = "runs today")
@@ -274,7 +341,9 @@ private fun RowScope.StatTile(value: String, label: String, accent: Color? = nul
     Column(
         modifier = Modifier
             .weight(1f)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.shapes.large)
+            // 13dp is off the scale and left there: it is the inset that keeps a titleLarge
+            // number optically centred in a tile only two lines tall.
             .padding(13.dp),
     ) {
         Text(
@@ -288,84 +357,6 @@ private fun RowScope.StatTile(value: String, label: String, accent: Color? = nul
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-    }
-}
-
-@Composable
-private fun RunRow(
-    run: RunSummary,
-    nowMillis: Long,
-    showDivider: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val failed = run.status == RunStatus.FAILED
-    val warning = warningTint()
-
-    Column(modifier.padding(horizontal = 20.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                // A minimum, not a fixed height, for the same reason Home's tile grid uses
-                // IntrinsicSize.Max: at a large font scale these two lines are taller than 60dp,
-                // and a fixed row clips the "3h ago · gemini" line off the bottom.
-                .heightIn(min = 60.dp)
-                .clickable(onClick = onClick),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            WorkflowIcon(
-                icon = run.workflowIcon,
-                size = 36.dp,
-                container = if (failed) {
-                    warning.container
-                } else {
-                    MaterialTheme.colorScheme.secondaryContainer
-                },
-            )
-            Spacer(Modifier.width(13.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = run.workflowName,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // An icon, not a thumbnail: the list must never decode a screen capture per row.
-                    if (run.hasScreenshot) {
-                        Icon(
-                            imageVector = Icons.Outlined.Image,
-                            contentDescription = "Ran on a screenshot",
-                            modifier = Modifier
-                                .padding(end = 5.dp)
-                                .size(13.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Text(
-                        text = "${relativeTime(run.startedAt, nowMillis)} · ${runDetail(run)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (failed) warning.content else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            // A failure's duration says nothing useful, so the row spends that space on why.
-            if (!failed) {
-                Text(
-                    text = formatDuration(run.durationMs),
-                    style = MetaTextStyle,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-                Spacer(Modifier.width(10.dp))
-            }
-            StatusIcon(run.status)
-        }
-        if (showDivider) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHigh)
-        }
     }
 }
 
@@ -402,8 +393,8 @@ private fun RunDetailSheet(
         Column(
             Modifier
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
+                .padding(horizontal = Spacing.Gutter)
+                .padding(bottom = Spacing.Xxxl),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 WorkflowIcon(icon = run.workflowIcon)
@@ -419,7 +410,7 @@ private fun RunDetailSheet(
                 StatusIcon(run.status)
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.Md))
             Text(
                 text = "${absoluteTime(run.startedAt)} · ${run.providerLabel} · ${run.model}",
                 style = MetaTextStyle,
@@ -429,26 +420,31 @@ private fun RunDetailSheet(
             // Above the input preview because for these runs the picture *is* what was sent;
             // the text below it is only the caption the runner recorded alongside it.
             run.screenshotPath?.let { path ->
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(Spacing.Xl))
                 Text("Screenshot", style = MaterialTheme.typography.titleSmall)
+                // 6dp, off the scale: a heading and the thing it names are one unit, and Sm
+                // opens a gap wide enough to read as two.
                 Spacer(Modifier.height(6.dp))
                 RunScreenshot(path)
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(Spacing.Xl))
             Text("Input", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(6.dp))
-            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+            ) {
                 Text(
                     text = run.inputPreview.ifBlank { "(no input)" },
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
+                        .padding(Spacing.Md),
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(Spacing.Xl))
             val error = run.error
             if (error != null) {
                 ErrorCard(title = "Run failed", message = error)
@@ -458,21 +454,21 @@ private fun RunDetailSheet(
                 MarkdownText(run.outputPreview.orEmpty().ifBlank { "(no output recorded)" })
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(Spacing.Xxl))
             HorizontalDivider()
-            Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Spacer(Modifier.height(Spacing.Lg))
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.Md)) {
                 FilledTonalButton(
                     onClick = { onCopy(run.outputPreview ?: run.error.orEmpty()) },
                     enabled = !run.outputPreview.isNullOrBlank() || run.error != null,
                 ) {
                     Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(Spacing.Sm))
                     Text("Copy")
                 }
                 Button(onClick = onRunAgain) {
                     Icon(Icons.Outlined.Replay, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(Spacing.Sm))
                     Text("Run again")
                 }
             }

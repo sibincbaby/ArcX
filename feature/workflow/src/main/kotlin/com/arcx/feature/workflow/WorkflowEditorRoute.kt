@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -61,6 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -74,16 +76,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.arcx.core.common.prompt.PromptTemplate
 import com.arcx.core.common.prompt.PromptVariable
+import com.arcx.core.designsystem.component.ArcxAction
+import com.arcx.core.designsystem.component.NoticeCard
+import com.arcx.core.designsystem.component.NoticeSeverity
 import com.arcx.core.designsystem.component.StepBar
 import com.arcx.core.designsystem.component.WorkflowIcon
 import com.arcx.core.designsystem.theme.MetaTextStyle
 import com.arcx.core.designsystem.theme.PromptTextStyle
+import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.designsystem.theme.stepEnter
 import com.arcx.core.designsystem.theme.stepExit
 import com.arcx.core.designsystem.theme.tint
@@ -172,6 +179,9 @@ fun WorkflowEditorRoute(
     }
 }
 
+/** The icon tile beside the name field; WorkflowIcon derives its own corner from this. */
+private val EditorIconSize = 52.dp
+
 private const val STEP_COUNT = 3
 private const val STEP_TRIGGER = 0
 private const val STEP_PROMPT = 1
@@ -257,7 +267,7 @@ private fun WorkflowEditorScreen(
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = Spacing.Gutter),
         ) {
             // The three steps used to replace each other in one frame, which left the only
             // thing that says "you moved forward" — the progress bar — doing it alone. The
@@ -299,7 +309,7 @@ private fun WorkflowEditorScreen(
                     }
                 }
             }
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(Spacing.Xxxl))
         }
     }
 
@@ -330,11 +340,11 @@ private fun EditorHeader(
     onLeading: () -> Unit,
     onSave: () -> Unit,
 ) {
-    Column(Modifier.padding(bottom = 8.dp)) {
+    Column(Modifier.padding(bottom = Spacing.Sm)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 8.dp, end = 8.dp, top = 8.dp),
+                .padding(start = Spacing.Sm, end = Spacing.Sm, top = Spacing.Sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onLeading) {
@@ -359,13 +369,13 @@ private fun EditorHeader(
                 text = "${step + 1} of $STEP_COUNT",
                 style = MetaTextStyle,
                 color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(end = 12.dp),
+                modifier = Modifier.padding(end = Spacing.Md),
             )
         }
         StepBar(
             current = step,
             total = STEP_COUNT,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Sm),
         )
     }
 }
@@ -384,16 +394,23 @@ private fun EditorFooter(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .padding(top = 12.dp, bottom = 22.dp),
+            .padding(horizontal = Spacing.Gutter)
+            // 22dp bottom, off the scale: it clears the gesture bar, which is not a gap between
+            // two things and so is not on the spacing grid.
+            .padding(top = Spacing.Md, bottom = 22.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (canTest) {
-            OutlinedIconAction(
+            ArcxAction(
                 onClick = onTest,
                 enabled = !testing,
                 contentDescription = "Try this prompt",
+                // Only the height is stated, and only because this stands beside the 50dp
+                // Continue button. The width is left to ArcxAction so its 48dp floor keeps the
+                // icon centred — and keeps it centred when the spinner, which is smaller, takes
+                // its place mid-run.
+                modifier = Modifier.height(50.dp),
             ) {
                 if (testing) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -409,18 +426,18 @@ private fun EditorFooter(
         Button(
             onClick = if (step == STEP_OUTPUT) onSave else onContinue,
             enabled = !saving,
-            shape = RoundedCornerShape(16.dp),
+            shape = MaterialTheme.shapes.medium,
             modifier = Modifier
                 .weight(1f)
                 .height(50.dp),
         ) {
             if (step == STEP_OUTPUT) {
                 Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(19.dp))
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(Spacing.Sm))
                 Text(saveLabel)
             } else {
                 Text("Continue")
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(Spacing.Sm))
                 Icon(
                     Icons.AutoMirrored.Outlined.ArrowForward,
                     contentDescription = null,
@@ -429,24 +446,6 @@ private fun EditorFooter(
             }
         }
     }
-}
-
-@Composable
-private fun OutlinedIconAction(
-    onClick: () -> Unit,
-    enabled: Boolean,
-    contentDescription: String,
-    content: @Composable () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .size(width = 52.dp, height = 50.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
-            .clickable(enabled = enabled, onClick = onClick, onClickLabel = contentDescription),
-        contentAlignment = Alignment.Center,
-        content = { content() },
-    )
 }
 
 // ---------------------------------------------------------------- step 1: what sets it off
@@ -506,7 +505,7 @@ private fun TriggerStep(
         }
     }
 
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(Spacing.Md))
     WiringPreview(state)
 }
 
@@ -514,7 +513,7 @@ private fun TriggerStep(
 @Composable
 private fun WiringPreview(state: WorkflowEditorState) {
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -553,17 +552,24 @@ private fun PromptStep(
 ) {
     StepTitle("What should it do?")
 
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Spacing.Lg))
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box {
             WorkflowIcon(
                 icon = state.icon,
-                size = 52.dp,
+                size = EditorIconSize,
                 container = state.category.tint().container,
                 content = state.category.tint().content,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(17.dp))
-                    .clickable(onClick = onPickIcon, onClickLabel = "Change icon"),
+                    .minimumInteractiveComponentSize()
+                    // Not a theme radius: WorkflowIcon clips itself at size/3, and the ripple has
+                    // to follow that same curve or it corners past the tile it is drawn on.
+                    .clip(RoundedCornerShape(EditorIconSize / 3))
+                    .clickable(
+                        onClick = onPickIcon,
+                        onClickLabel = "Change icon",
+                        role = Role.Button,
+                    ),
             )
             Icon(
                 imageVector = Icons.Outlined.Edit,
@@ -572,7 +578,8 @@ private fun PromptStep(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .size(18.dp)
-                    .clip(RoundedCornerShape(9.dp))
+                    // Half the size: a circle, not a corner tier.
+                    .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                     .padding(3.dp),
             )
@@ -584,7 +591,7 @@ private fun PromptStep(
             singleLine = true,
             placeholder = { Text("Name it") },
             isError = state.nameError,
-            shape = RoundedCornerShape(16.dp),
+            shape = MaterialTheme.shapes.medium,
             colors = flatFieldColors(),
             modifier = Modifier.weight(1f),
         )
@@ -603,7 +610,7 @@ private fun PromptStep(
         modifier = Modifier.fillMaxWidth(),
     )
 
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(Spacing.Xl))
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = "Prompt",
@@ -613,7 +620,7 @@ private fun PromptStep(
         )
         AssistChip(
             onClick = onOpenTemplates,
-            shape = RoundedCornerShape(9.dp),
+            shape = MaterialTheme.shapes.small,
             label = { Text("Templates") },
             leadingIcon = {
                 Icon(Icons.Outlined.Bookmarks, contentDescription = null, Modifier.size(15.dp))
@@ -633,13 +640,13 @@ private fun PromptStep(
     }
     PromptVariableSummary(prompt = state.prompt.text, input = state.input)
 
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(Spacing.Xl))
     Text(
         text = "Try it",
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(Spacing.Sm))
     TestPanel(
         sampleText = state.sampleText,
         test = state.test,
@@ -659,7 +666,7 @@ private fun PromptEditor(
     onInsertVariable: (PromptVariable) -> Unit,
 ) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = if (isError) {
             androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error)
@@ -683,7 +690,7 @@ private fun PromptEditor(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = Spacing.Md, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -702,9 +709,16 @@ private fun VariableChip(name: String, onClick: () -> Unit) {
         style = MetaTextStyle,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            // The chip stays chip-sized; the floor only reserves the 48dp around it, which is
+            // what a thumb needs and what the shared primitives already give every other pill.
+            .minimumInteractiveComponentSize()
+            .clip(MaterialTheme.shapes.small)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-            .clickable(onClick = onClick, onClickLabel = "Insert {{$name}}")
+            .clickable(
+                onClick = onClick,
+                onClickLabel = "Insert {{$name}}",
+                role = Role.Button,
+            )
             .padding(horizontal = 9.dp, vertical = 6.dp),
     )
 }
@@ -720,11 +734,11 @@ private fun TestPanel(
     onSampleTextChange: (String) -> Unit,
 ) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(vertical = 4.dp)) {
+        Column(Modifier.padding(vertical = Spacing.Xs)) {
             TextField(
                 value = sampleText,
                 onValueChange = onSampleTextChange,
@@ -739,7 +753,7 @@ private fun TestPanel(
                 TestRunState.Idle -> Unit
 
                 TestRunState.Running -> Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    Modifier.padding(horizontal = Spacing.Lg, vertical = Spacing.Md),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -753,7 +767,7 @@ private fun TestPanel(
 
                 is TestRunState.Done -> Column {
                     HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHigh)
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Row(Modifier.padding(horizontal = Spacing.Lg, vertical = Spacing.Md)) {
                         Icon(
                             imageVector = Icons.Outlined.CheckCircle,
                             contentDescription = null,
@@ -773,7 +787,7 @@ private fun TestPanel(
                         text = "${test.durationMs / 1000.0}s · ${test.model}",
                         style = MetaTextStyle,
                         color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.padding(start = 16.dp, bottom = 12.dp),
+                        modifier = Modifier.padding(start = Spacing.Lg, bottom = Spacing.Md),
                     )
                 }
 
@@ -783,7 +797,7 @@ private fun TestPanel(
                         text = test.message,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(Spacing.Lg),
                     )
                 }
             }
@@ -808,7 +822,7 @@ private fun OutputStep(
 
     StepTitle("Where does it land?")
 
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Spacing.Lg))
     OutputTarget.entries.chunked(2).forEach { pair ->
         Row(
             modifier = Modifier.padding(bottom = 9.dp),
@@ -825,7 +839,7 @@ private fun OutputStep(
         }
     }
 
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(Spacing.Md))
     FormDropdown(
         label = "Provider",
         selected = state.providers.firstOrNull { it.id == state.providerId },
@@ -835,7 +849,7 @@ private fun OutputStep(
         modifier = Modifier.fillMaxWidth(),
     )
 
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(Spacing.Md))
     ModelField(
         model = state.model,
         models = state.models,
@@ -846,8 +860,11 @@ private fun OutputStep(
 
     state.modelWithoutVision?.let { name ->
         Spacer(Modifier.height(10.dp))
-        EditorWarning(
-            "$name cannot look at images, so this workflow will send it a screenshot " +
+        // Advice, never a gate. Everything the builder can get wrong is still savable — a
+        // half-right workflow the user can come back and fix beats a form that refuses to close.
+        NoticeCard(
+            severity = NoticeSeverity.Warning,
+            message = "$name cannot look at images, so this workflow will send it a screenshot " +
                 "it can never read. Pick a model with vision when you have one — " +
                 "saving works either way.",
         )
@@ -876,7 +893,7 @@ private fun OutputStep(
         )
     }
 
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(Spacing.Xl))
     SummaryCard(state)
 }
 
@@ -886,10 +903,11 @@ private fun RowScope.OutputCard(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = MaterialTheme.shapes.large
     Column(
         modifier = Modifier
             .weight(1f)
+            .minimumInteractiveComponentSize()
             .heightIn(min = 100.dp)
             .clip(shape)
             .then(
@@ -901,7 +919,7 @@ private fun RowScope.OutputCard(
                     Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
                 },
             )
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -936,7 +954,7 @@ private fun SummaryCard(state: WorkflowEditorState) {
     val name = state.name.trim().ifBlank { "this workflow" }
 
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
@@ -950,7 +968,7 @@ private fun SummaryCard(state: WorkflowEditorState) {
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Spacing.Sm))
             Text(
                 text = "Run $name on ${state.input.summaryPhrase}, and $provider answers — " +
                     "then ArcX ${state.output.summaryPhrase}.",
@@ -987,7 +1005,7 @@ private fun FieldError(text: String) {
         text = text,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.error,
-        modifier = Modifier.padding(start = 4.dp, top = 6.dp),
+        modifier = Modifier.padding(start = Spacing.Xs, top = 6.dp),
     )
 }
 
@@ -999,10 +1017,11 @@ private fun ChoiceCard(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = MaterialTheme.shapes.large
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .minimumInteractiveComponentSize()
             .clip(shape)
             .then(
                 if (selected) {
@@ -1013,7 +1032,7 @@ private fun ChoiceCard(
                     Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
                 },
             )
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(14.dp),
         verticalAlignment = Alignment.Top,
         content = content,
@@ -1048,8 +1067,9 @@ private fun PromptVariableSummary(prompt: String, input: InputSource) {
     when {
         used.isEmpty() && needsInput && prompt.isNotBlank() -> {
             Spacer(Modifier.height(10.dp))
-            EditorWarning(
-                "This prompt never mentions the input. Add {{input}} where the " +
+            NoticeCard(
+                severity = NoticeSeverity.Warning,
+                message = "This prompt never mentions the input. Add {{input}} where the " +
                     "${input.label.lowercase()} should go, or the AI will answer without it.",
             )
         }
@@ -1058,27 +1078,7 @@ private fun PromptVariableSummary(prompt: String, input: InputSource) {
             text = "Uses ${used.joinToString { "{{$it}}" }}",
             style = MetaTextStyle,
             color = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.padding(start = 4.dp, top = 8.dp),
-        )
-    }
-}
-
-/**
- * Advice, never a gate. Everything the builder can get wrong is still savable — a half-right
- * workflow the user can come back and fix beats a form that refuses to close.
- */
-@Composable
-private fun EditorWarning(text: String) {
-    Surface(
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(start = Spacing.Xs, top = Spacing.Sm),
         )
     }
 }
@@ -1178,7 +1178,7 @@ private fun AdvancedSection(
         modifier = Modifier.fillMaxWidth(),
     )
 
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(Spacing.Md))
 
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1206,7 +1206,7 @@ private fun AdvancedSection(
         }
     }
 
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(Spacing.Md))
 
     OutlinedTextField(
         value = maxTokens,

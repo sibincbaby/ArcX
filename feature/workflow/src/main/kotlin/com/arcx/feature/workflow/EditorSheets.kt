@@ -24,15 +24,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.arcx.core.designsystem.component.SectionLabel
 import com.arcx.core.designsystem.component.WorkflowIcon
 import com.arcx.core.designsystem.component.WorkflowIcons
 import com.arcx.core.designsystem.component.workflowIconFor
+import com.arcx.core.designsystem.theme.Spacing
+
+/** One cell of the icon grid; the grid's own 56dp minimum leaves room for it plus the gap. */
+private val IconTileSize = 48.dp
 
 /**
  * A grid of the icons a workflow can wear, grouped so the right one is found by scanning rather
@@ -49,16 +55,16 @@ internal fun IconPickerSheet(
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(horizontal = 20.dp)) {
+        Column(Modifier.padding(horizontal = Spacing.Gutter)) {
             Text("Pick an icon", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.Md))
 
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 56.dp),
                 modifier = Modifier.heightIn(max = 320.dp),
-                contentPadding = PaddingValues(vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = Spacing.Xs),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.Sm),
             ) {
                 WorkflowIcons.groupBy { it.group }.forEach { (group, options) ->
                     item(span = { GridItemSpan(maxLineSpan) }, key = "group-$group") {
@@ -68,7 +74,7 @@ internal fun IconPickerSheet(
                         val selected = option.key == current
                         WorkflowIcon(
                             icon = option.key,
-                            size = 48.dp,
+                            size = IconTileSize,
                             container = if (selected) {
                                 MaterialTheme.colorScheme.primary
                             } else {
@@ -80,8 +86,16 @@ internal fun IconPickerSheet(
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
                             modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable(onClickLabel = option.label) {
+                                .minimumInteractiveComponentSize()
+                                // Not a theme radius: WorkflowIcon clips itself at size/3, and the
+                                // ripple has to follow that same curve or it corners past the tile
+                                // it is drawn on. Derived rather than repeated as a literal, so
+                                // resizing the tile cannot leave the two out of step.
+                                .clip(RoundedCornerShape(IconTileSize / 3))
+                                .clickable(
+                                    onClickLabel = option.label,
+                                    role = Role.Button,
+                                ) {
                                     onChange(option.key)
                                     onDismiss()
                                 },
@@ -90,7 +104,7 @@ internal fun IconPickerSheet(
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.Md))
             OutlinedTextField(
                 value = if (workflowIconFor(current) != null) "" else current,
                 onValueChange = onChange,
@@ -98,7 +112,7 @@ internal fun IconPickerSheet(
                 label = { Text("Or type an emoji") },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(Spacing.Xxxl))
         }
     }
 }
@@ -112,23 +126,23 @@ internal fun PromptTemplateSheet(
         Column(
             Modifier
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = Spacing.Gutter),
         ) {
             Text("Start from a template", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(Spacing.Xs))
             Text(
                 "Each one is a complete prompt. Pick the closest, then change whatever you like.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.Md))
 
             PROMPT_TEMPLATES.forEach { template ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .clickable { onPick(template) }
+                        .clip(MaterialTheme.shapes.large)
+                        .clickable(role = Role.Button) { onPick(template) }
                         .padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -143,7 +157,7 @@ internal fun PromptTemplateSheet(
                     }
                 }
             }
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(Spacing.Xxxl))
         }
     }
 }

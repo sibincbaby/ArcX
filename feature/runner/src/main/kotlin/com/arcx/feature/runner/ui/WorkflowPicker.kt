@@ -1,9 +1,7 @@
 package com.arcx.feature.runner.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -11,33 +9,33 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.arcx.core.designsystem.component.ArcxListRow
+import com.arcx.core.designsystem.component.ArcxListRowIconSize
+import com.arcx.core.designsystem.component.ArcxSearchField
 import com.arcx.core.designsystem.component.EmptyState
+import com.arcx.core.designsystem.component.LoadingState
 import com.arcx.core.designsystem.component.PanelListMaxHeight
 import com.arcx.core.designsystem.component.SectionLabel
-import com.arcx.core.designsystem.component.StreamingIndicator
 import com.arcx.core.designsystem.component.WiringChips
 import com.arcx.core.designsystem.component.WorkflowIcon
 import com.arcx.core.designsystem.component.WorkflowPanelCard
 import com.arcx.core.designsystem.component.WorkflowPanelEmpty
 import com.arcx.core.designsystem.component.WorkflowPanelRow
 import com.arcx.core.designsystem.component.shortLabel
+import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.designsystem.theme.tint
 import com.arcx.core.model.Workflow
 import com.arcx.feature.runner.RunnerUiState
@@ -63,30 +61,22 @@ internal fun WorkflowPicker(
         Text(
             text = "Run a workflow",
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+            modifier = Modifier.padding(
+                start = Spacing.Gutter,
+                end = Spacing.Gutter,
+                bottom = Spacing.Md,
+            ),
         )
 
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = onQueryChange,
-            placeholder = { Text("Search") },
-            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-        )
-
-        Spacer(Modifier.height(8.dp))
+        // No spacer under it: the shared field carries its own gutter and vertical padding, and
+        // adding one here is how this search box drifted from the other three in the first place.
+        ArcxSearchField(query = state.query, onQueryChange = onQueryChange)
 
         when {
-            !state.catalogLoaded -> Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(96.dp),
-                contentAlignment = Alignment.Center,
-            ) { StreamingIndicator() }
+            // A spinner, not the streaming dots. The dots mean a model is producing tokens; this
+            // wait is a Room read, and spending the one animation that means "provider" on a
+            // database query is what makes a local read look like a network call.
+            !state.catalogLoaded -> LoadingState()
 
             state.sections.isEmpty() && state.query.isNotBlank() -> EmptyState(
                 icon = Icons.Outlined.Search,
@@ -118,49 +108,42 @@ internal fun WorkflowPicker(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(Spacing.Md))
     }
 }
 
+/** The picker's row is the app's row: [ArcxListRow] with the wiring chips as its subtitle. */
 @Composable
 private fun WorkflowRow(workflow: Workflow, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val tint = workflow.category.tint()
-        WorkflowIcon(
-            icon = workflow.icon,
-            size = 38.dp,
-            container = tint.container,
-            content = tint.content,
-        )
-        Spacer(Modifier.width(13.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = workflow.name,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+    ArcxListRow(
+        title = workflow.name,
+        leading = {
+            val tint = workflow.category.tint()
+            WorkflowIcon(
+                icon = workflow.icon,
+                size = ArcxListRowIconSize,
+                container = tint.container,
+                content = tint.content,
             )
-            Spacer(Modifier.height(4.dp))
+        },
+        subtitle = {
             WiringChips(
                 input = workflow.input.shortLabel,
                 output = workflow.output.shortLabel,
             )
-        }
-        if (workflow.isPinned) {
-            Icon(
-                imageVector = Icons.Outlined.PushPin,
-                contentDescription = "Pinned",
-                tint = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-    }
+        },
+        trailing = {
+            if (workflow.isPinned) {
+                Icon(
+                    imageVector = Icons.Outlined.PushPin,
+                    contentDescription = "Pinned",
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        },
+        onClick = onClick,
+    )
 }
 
 /**
@@ -168,7 +151,8 @@ private fun WorkflowRow(workflow: Workflow, onClick: () -> Unit) {
  *
  * No search box — not because a focused window cannot have one, but because the point of this
  * option is to match a panel that genuinely cannot. Sections collapse to one flat list for the
- * same reason: the bubble has no headers.
+ * same reason: the bubble has no headers. [WorkflowPanelRow] rather than the [ArcxListRow] the
+ * sheet above draws, for that same reason — this list has to be the bubble's list, not the app's.
  */
 @Composable
 private fun CompactWorkflowPanel(
@@ -178,14 +162,9 @@ private fun CompactWorkflowPanel(
 ) {
     val workflows = state.sections.flatMap { it.workflows }
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        WorkflowPanelCard(title = "Run a workflow", modifier = Modifier.padding(12.dp)) {
+        WorkflowPanelCard(title = "Run a workflow", modifier = Modifier.padding(Spacing.Md)) {
             when {
-                !state.catalogLoaded -> Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(96.dp),
-                    contentAlignment = Alignment.Center,
-                ) { StreamingIndicator() }
+                !state.catalogLoaded -> LoadingState()
 
                 workflows.isEmpty() -> WorkflowPanelEmpty(
                     "No workflows yet. Build one in ArcX and it will show up here.",

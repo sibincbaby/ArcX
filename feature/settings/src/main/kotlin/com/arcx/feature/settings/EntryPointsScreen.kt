@@ -8,9 +8,6 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -38,7 +34,6 @@ import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -58,10 +53,12 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.arcx.core.designsystem.R as DesignSystemR
+import com.arcx.core.designsystem.component.NoticeCard
+import com.arcx.core.designsystem.component.NoticeSeverity
 import com.arcx.core.designsystem.component.SectionLabel
 import com.arcx.core.designsystem.component.TintedIcon
 import com.arcx.core.designsystem.theme.MetaTextStyle
-import com.arcx.core.designsystem.theme.warningTint
+import com.arcx.core.designsystem.theme.Spacing
 
 /**
  * Everything that lets ArcX be used from outside its own window, led by how many of them are
@@ -144,14 +141,22 @@ internal fun EntryPointsScreen(
             Text(
                 text = "$live of 6 are live",
                 style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp),
+                modifier = Modifier.padding(
+                    start = Spacing.Gutter,
+                    end = Spacing.Gutter,
+                    top = Spacing.Sm,
+                ),
             )
             Text(
                 text = "Each one funnels into the same runner, so a workflow behaves identically " +
                     "wherever you fire it.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp),
+                modifier = Modifier.padding(
+                    start = Spacing.Gutter,
+                    end = Spacing.Gutter,
+                    top = 6.dp,
+                ),
             )
 
             Spacer(Modifier.height(18.dp))
@@ -272,10 +277,16 @@ internal fun EntryPointsScreen(
             // service afterwards on the OEMs that police background starts — the bubble is simply
             // gone until the app is opened again. These two settings are the only levers a user
             // has, so say what they are for rather than listing permissions.
-            Spacer(Modifier.height(8.dp))
-            WarningCard(
+            Spacer(Modifier.height(Spacing.Sm))
+            // Amber, not red: none of this is broken, it is the platform behaving as designed.
+            NoticeCard(
+                severity = NoticeSeverity.Warning,
                 title = "Keeping the bubble alive",
-                body = if (hasAutostartScreen) {
+                icon = Icons.Outlined.BatteryAlert,
+                // NoticeCard draws no outer inset of its own, so the card states the gutter the
+                // groups above and below it sit on.
+                modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = 6.dp),
+                message = if (hasAutostartScreen) {
                     "Clearing ArcX from Recents stops the bubble, and your phone will not bring " +
                         "it back on its own. Autostart is what allows it to return; locking ArcX " +
                         "in Recents stops it being cleared in the first place. Opening ArcX, or " +
@@ -318,16 +329,16 @@ internal fun EntryPointsScreen(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                shape = CardShape,
+                    .padding(horizontal = Spacing.Gutter, vertical = 6.dp),
+                shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.secondaryContainer,
             ) {
-                Column(Modifier.padding(16.dp)) {
+                Column(Modifier.padding(Spacing.Lg)) {
                     Text(
                         "What this permission does",
                         style = MaterialTheme.typography.titleSmall,
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(Spacing.Sm))
                     // Same string the system Accessibility screen shows, so the two can never
                     // describe the permission differently.
                     Text(
@@ -409,7 +420,7 @@ internal fun EntryPointsScreen(
                     onCheckedChange = onCompactPickerChange,
                 )
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(Spacing.Xxl))
         }
     }
 }
@@ -434,7 +445,10 @@ private fun SurfaceRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 15.dp, vertical = 13.dp),
+            // 16, not the 15 this row alone used: it sits inside SettingsGroup's card, so this is
+            // the card's interior and it has to line up with SettingsRow's, which is Lg. The
+            // screen gutter is the one SettingsGroup states, further out.
+            .padding(horizontal = Spacing.Lg, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TintedIcon(
@@ -475,41 +489,8 @@ private fun BuiltInBadge() {
         text = "built in",
         style = MetaTextStyle,
         color = MaterialTheme.colorScheme.outline,
-        modifier = Modifier.padding(end = 4.dp),
+        modifier = Modifier.padding(end = Spacing.Xs),
     )
-}
-
-/** Amber, not red: none of this is broken, it is the platform behaving as designed. */
-@Composable
-private fun WarningCard(title: String, body: String) {
-    val warning = warningTint()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .background(warning.container, CardShape)
-            .border(1.dp, warning.content.copy(alpha = 0.3f), CardShape)
-            .padding(15.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.BatteryAlert,
-            contentDescription = null,
-            tint = warning.content,
-            modifier = Modifier
-                .padding(top = 1.dp)
-                .size(19.dp),
-        )
-        Column {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = warning.content)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
 }
 
 @Composable
@@ -521,13 +502,13 @@ private fun PermissionPrompt(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = CardShape,
+            .padding(horizontal = Spacing.Gutter, vertical = 6.dp),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(Spacing.Lg)) {
             Text(body, style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.Md))
             Button(onClick = onAction) { Text(actionLabel) }
         }
     }

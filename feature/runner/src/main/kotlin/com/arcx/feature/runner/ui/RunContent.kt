@@ -1,15 +1,11 @@
 package com.arcx.feature.runner.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -22,7 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -45,21 +40,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.arcx.core.designsystem.format.formatDuration
+import com.arcx.core.designsystem.component.ArcxAction
+import com.arcx.core.designsystem.component.ArcxActionStyle
 import com.arcx.core.designsystem.component.ErrorCard
 import com.arcx.core.designsystem.component.MarkdownText
 import com.arcx.core.designsystem.component.StreamingIndicator
 import com.arcx.core.designsystem.component.WorkflowIcon
 import com.arcx.core.designsystem.theme.MetaTextStyle
 import com.arcx.core.designsystem.theme.Motion
+import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.designsystem.theme.tint
 import com.arcx.core.domain.execution.ExecutionState
 import com.arcx.core.model.Workflow
@@ -112,7 +108,7 @@ internal fun RunContent(
                 message = execution.error.body(),
                 actionLabel = "Retry",
                 onAction = onRetry,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Lg),
             )
 
             text.isNullOrEmpty() && streaming -> WaitingRow("Working…")
@@ -121,7 +117,7 @@ internal fun RunContent(
                 text = "Stopped before anything came back.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Lg),
             )
 
             else -> Answer(text, streaming, compact)
@@ -148,11 +144,11 @@ internal fun RunContent(
                 text = notice,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Sm),
             )
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(Spacing.Md))
     }
 }
 
@@ -173,11 +169,11 @@ private fun metaLine(workflow: Workflow, execution: ExecutionState, stopped: Boo
 @Composable
 internal fun WaitingRow(label: String, modifier: Modifier = Modifier) {
     Row(
-        modifier = modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+        modifier = modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Xl),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         StreamingIndicator()
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(Spacing.Md))
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
@@ -197,7 +193,7 @@ private fun Header(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = Spacing.Gutter)
             .padding(bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -208,7 +204,7 @@ private fun Header(
             container = tint.container,
             content = tint.content,
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(Spacing.Md))
         Column(Modifier.weight(1f)) {
             Text(
                 text = workflow.name,
@@ -231,7 +227,13 @@ private fun Header(
                 Text("Stop")
             }
         } else {
-            DoneButton(onClick = onDone)
+            // The only way out that is not an action, so it stays outlined rather than filled —
+            // but in primary, because on a finished run it is the one thing left to tap.
+            ArcxAction(
+                onClick = onDone,
+                label = "Done",
+                contentColor = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
@@ -270,12 +272,12 @@ private fun Answer(text: String, streaming: Boolean, compact: Boolean) {
             .heightIn(max = if (compact) 280.dp else 420.dp)
             .nestedScroll(followConnection)
             .verticalScroll(scrollState)
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = Spacing.Gutter, vertical = Spacing.Lg),
     ) {
         // Selectable so a user can lift one paragraph out of a long answer.
         SelectionContainer { MarkdownText(text) }
         if (streaming) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Spacing.Sm))
             StreamingIndicator()
         }
     }
@@ -297,99 +299,26 @@ private fun ActionRow(
     FlowRow(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = Spacing.Gutter, vertical = Spacing.Xs),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
     ) {
         if (onReplace != null) {
-            FilledAction("Replace", Icons.Outlined.FindReplace, onReplace)
-            OutlinedAction("Copy", Icons.Outlined.ContentCopy, onCopy)
+            ArcxAction(
+                onClick = onReplace,
+                label = "Replace",
+                icon = Icons.Outlined.FindReplace,
+                style = ArcxActionStyle.Filled,
+            )
+            ArcxAction(onClick = onCopy, label = "Copy", icon = Icons.Outlined.ContentCopy)
         } else {
-            FilledAction("Copy", Icons.Outlined.ContentCopy, onCopy)
-        }
-        OutlinedAction("Share", Icons.Outlined.Share, onShare)
-        OutlinedAction(icon = Icons.Outlined.Refresh, onClick = onRetry, contentDescription = "Retry")
-    }
-}
-
-@Composable
-private fun FilledAction(label: String, icon: ImageVector, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .height(38.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.primaryContainer)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier.size(17.dp),
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-        )
-    }
-}
-
-@Composable
-private fun OutlinedAction(
-    label: String? = null,
-    icon: ImageVector? = null,
-    onClick: () -> Unit,
-    contentDescription: String? = null,
-) {
-    val shape = RoundedCornerShape(12.dp)
-    Row(
-        modifier = Modifier
-            .height(38.dp)
-            .clip(shape)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-            .clickable(onClick = onClick, onClickLabel = contentDescription)
-            .padding(horizontal = if (label == null) 11.dp else 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        if (icon != null) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(17.dp),
+            ArcxAction(
+                onClick = onCopy,
+                label = "Copy",
+                icon = Icons.Outlined.ContentCopy,
+                style = ArcxActionStyle.Filled,
             )
         }
-        if (label != null) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/** The header's bare "Done": smaller than the action row, and the only way out that is not an action. */
-@Composable
-private fun DoneButton(onClick: () -> Unit) {
-    val shape = RoundedCornerShape(10.dp)
-    Box(
-        modifier = Modifier
-            .height(32.dp)
-            .clip(shape)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "Done",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
+        ArcxAction(onClick = onShare, label = "Share", icon = Icons.Outlined.Share)
+        ArcxAction(onClick = onRetry, icon = Icons.Outlined.Refresh, contentDescription = "Retry")
     }
 }

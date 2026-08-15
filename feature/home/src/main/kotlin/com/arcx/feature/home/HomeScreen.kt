@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -41,15 +40,13 @@ import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,23 +60,30 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.arcx.core.designsystem.component.ArcxListRow
+import com.arcx.core.designsystem.component.ArcxListRowIconSize
+import com.arcx.core.designsystem.component.ArcxPill
+import com.arcx.core.designsystem.component.ArcxSearchField
 import com.arcx.core.designsystem.component.EmptyState
 import com.arcx.core.designsystem.component.ErrorCard
+import com.arcx.core.designsystem.component.LoadingState
 import com.arcx.core.designsystem.component.WorkflowIcon
 import com.arcx.core.designsystem.format.formatDuration
 import com.arcx.core.designsystem.format.relativeTime
+import com.arcx.core.designsystem.theme.ArcXCorner
 import com.arcx.core.designsystem.theme.MetaTextStyle
 import com.arcx.core.designsystem.theme.Motion
+import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.designsystem.theme.tint
 import com.arcx.core.designsystem.theme.warningTint
 import com.arcx.core.model.RunSummary
 
-private val TileShape = RoundedCornerShape(18.dp)
 private const val GRID_COLUMNS = 3
 
 @Composable
@@ -145,6 +149,8 @@ private fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
+            // 96dp is off the spacing scale on purpose: it is the extended FAB plus its margin,
+            // so the last recent run can still be read instead of sitting under the button.
             contentPadding = PaddingValues(bottom = 96.dp),
         ) {
             item(key = "header") {
@@ -170,7 +176,11 @@ private fun HomeScreen(
                     exit = shrinkVertically(tween(Motion.Medium, easing = Motion.Accelerate)) +
                         fadeOut(tween(Motion.Fast)),
                 ) {
-                    SearchField(query = state.query, onQueryChange = onQueryChange)
+                    ArcxSearchField(
+                        query = state.query,
+                        onQueryChange = onQueryChange,
+                        placeholder = "Search workflows",
+                    )
                 }
             }
 
@@ -181,11 +191,16 @@ private fun HomeScreen(
                     ErrorCard(
                         title = "Couldn't load your workflows",
                         message = state.error,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(
+                            horizontal = Spacing.Gutter,
+                            vertical = Spacing.Sm,
+                        ),
                     )
                 }
 
-                state.loading -> Unit
+                // Not a blank screen. An empty Home and a Home whose first read is still in
+                // flight look identical, and the grid is what a user opens the app to reach.
+                state.loading -> item(key = "loading") { LoadingState() }
 
                 state.libraryIsEmpty -> item(key = "first-run") {
                     EmptyState(
@@ -242,12 +257,38 @@ private fun LazyListScope.recentRuns(
     onRerun: (String) -> Unit,
 ) {
     itemsIndexed(runs, key = { _, run -> "run-${run.id}" }) { index, run ->
-        RunRow(
+        ArcxListRow(
+            title = run.workflowName,
             modifier = Modifier.animateItem(),
-            run = run,
-            nowMillis = nowMillis,
+            leading = { WorkflowIcon(icon = run.workflowIcon, size = ArcxListRowIconSize) },
+            subtitle = {
+                Text(
+                    text = runSubtitle(run, nowMillis),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            trailing = {
+                Text(
+                    text = formatDuration(run.durationMs),
+                    style = MetaTextStyle,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+                // The row itself stays inert and the replay button keeps its own target: a tap
+                // anywhere on a recent run would fire the workflow, which is not something to
+                // do by brushing a list on the way past.
+                IconButton(onClick = { onRerun(run.workflowId) }) {
+                    Icon(
+                        imageVector = Icons.Outlined.Replay,
+                        contentDescription = "Run ${run.workflowName} again",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            },
             showDivider = index < runs.lastIndex,
-            onRerun = { onRerun(run.workflowId) },
         )
     }
 }
@@ -263,12 +304,12 @@ private fun Header(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, end = 8.dp, top = 12.dp),
+            .padding(start = Spacing.Gutter, end = Spacing.Sm, top = Spacing.Md),
         verticalAlignment = Alignment.Top,
     ) {
         Column(Modifier.weight(1f)) {
             Text(greeting, style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(Spacing.Xs))
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodyMedium,
@@ -293,27 +334,6 @@ private fun Header(
 }
 
 @Composable
-private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
-    TextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        singleLine = true,
-        shape = RoundedCornerShape(14.dp),
-        placeholder = { Text("Search workflows") },
-        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-        // Dropping the indicator turns a form input into something that reads as a search box.
-        colors = TextFieldDefaults.colors(
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            disabledIndicatorColor = Color.Transparent,
-        ),
-    )
-}
-
-@Composable
 private fun TileGrid(
     tiles: List<HomeTile>,
     onRun: (String) -> Unit,
@@ -324,7 +344,10 @@ private fun TileGrid(
     // end rather than being pinned to a corner that may be empty.
     val cells = tiles.size + 1
     Column(
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Sm),
+        // 9dp stays off the 4dp scale. The three columns are whatever is left after the gutters
+        // and these two gaps, so moving to 8 or 12 resizes every tile on the screen — which is
+        // exactly the re-layout adopting the scale is meant to avoid.
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         (0 until cells step GRID_COLUMNS).forEach { start ->
@@ -361,19 +384,23 @@ private fun RowScope.WorkflowTile(
     onConfigure: () -> Unit,
 ) {
     val workflow = tile.workflow
+    val shape = MaterialTheme.shapes.large
     Surface(
         // Clip before clickable so the ripple stops at the rounded corner.
         modifier = Modifier
             .weight(1f)
             .fillMaxHeight()
             .heightIn(min = 104.dp)
-            .clip(TileShape)
-            .combinedClickable(onClick = onRun, onLongClick = onConfigure),
-        shape = TileShape,
+            .minimumInteractiveComponentSize()
+            .clip(shape)
+            .combinedClickable(role = Role.Button, onClick = onRun, onLongClick = onConfigure),
+        shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 11.dp, vertical = 12.dp),
+            // 11dp horizontal is a dp off Md and stays there: it is what sets the column width
+            // in the tightest grid in the app, so widening it re-wraps the two-line names.
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = Spacing.Md),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             val tint = workflow.category.tint()
@@ -409,9 +436,10 @@ private fun RowScope.AddTile(onClick: () -> Unit) {
             .weight(1f)
             .fillMaxHeight()
             .heightIn(min = 104.dp)
-            .clip(TileShape)
+            .minimumInteractiveComponentSize()
+            .clip(MaterialTheme.shapes.large)
             .dashedOutline(outline)
-            .clickable(onClick = onClick),
+            .clickable(role = Role.Button, onClick = onClick),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -433,7 +461,9 @@ private fun RowScope.AddTile(onClick: () -> Unit) {
 private fun Modifier.dashedOutline(color: Color) = drawBehind {
     drawRoundRect(
         color = color,
-        cornerRadius = CornerRadius(18.dp.toPx()),
+        // The raw radius rather than `MaterialTheme.shapes.large`, because drawRoundRect takes a
+        // number — the same card tier the filled tiles beside it are clipped to.
+        cornerRadius = CornerRadius(ArcXCorner.Card.toPx()),
         style = Stroke(
             width = 1.dp.toPx(),
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(10.dp.toPx(), 7.dp.toPx())),
@@ -443,60 +473,66 @@ private fun Modifier.dashedOutline(color: Color) = drawBehind {
 
 @Composable
 private fun SurfaceStrip(chips: List<SurfaceChip>, onClick: () -> Unit) {
+    val warning = warningTint()
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = Spacing.Gutter, vertical = Spacing.Md),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
     ) {
-        chips.forEach { chip -> SurfaceChipView(chip, onClick) }
-    }
-}
+        chips.forEach { chip ->
+            val content = when (chip.state) {
+                SurfaceState.LIVE -> MaterialTheme.colorScheme.primary
+                SurfaceState.OFF -> warning.content
+                SurfaceState.ALWAYS_ON -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            // A dot for something that is running, a warning glyph for something that is not,
+            // and nothing at all for the two surfaces the manifest guarantees — a mark on those
+            // would be reporting a state that cannot change.
+            val mark: (@Composable () -> Unit)? = when (chip.state) {
+                SurfaceState.LIVE -> {
+                    {
+                        Box(
+                            Modifier
+                                .size(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(content),
+                        )
+                    }
+                }
 
-@Composable
-private fun SurfaceChipView(chip: SurfaceChip, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(9.dp)
-    val warning = warningTint()
-    val container = when (chip.state) {
-        SurfaceState.LIVE -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-        SurfaceState.OFF -> warning.container
-        SurfaceState.ALWAYS_ON -> Color.Transparent
-    }
-    val content = when (chip.state) {
-        SurfaceState.LIVE -> MaterialTheme.colorScheme.primary
-        SurfaceState.OFF -> warning.content
-        SurfaceState.ALWAYS_ON -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
+                SurfaceState.OFF -> {
+                    {
+                        Icon(
+                            imageVector = Icons.Outlined.ErrorOutline,
+                            contentDescription = null,
+                            tint = content,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
 
-    Row(
-        modifier = Modifier
-            .height(32.dp)
-            .clip(shape)
-            .background(container)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        when (chip.state) {
-            SurfaceState.LIVE -> Box(
-                Modifier
-                    .size(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(content),
+                SurfaceState.ALWAYS_ON -> null
+            }
+
+            ArcxPill(
+                label = chip.label,
+                onClick = onClick,
+                leading = mark,
+                container = when (chip.state) {
+                    SurfaceState.LIVE -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                    SurfaceState.OFF -> warning.container
+                    SurfaceState.ALWAYS_ON -> Color.Unspecified
+                },
+                content = content,
+                // Nothing in this strip has an edge. Said out loud because the two surfaces the
+                // manifest guarantees are the only chips here with no wash, so left to infer they
+                // would be the only bordered thing in the row — louder than the chips that are
+                // actually reporting a state.
+                outlined = false,
             )
-
-            SurfaceState.OFF -> Icon(
-                imageVector = Icons.Outlined.ErrorOutline,
-                contentDescription = null,
-                tint = content,
-                modifier = Modifier.size(14.dp),
-            )
-
-            SurfaceState.ALWAYS_ON -> Unit
         }
-        Text(chip.label, style = MaterialTheme.typography.labelLarge, color = content)
     }
 }
 
@@ -505,7 +541,14 @@ private fun RecentHeader(onSeeActivity: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 4.dp),
+            // 10dp above is off the scale and left there: it is what sits the heading a hair
+            // closer to the runs it names than to the strip above it.
+            .padding(
+                start = Spacing.Gutter,
+                end = Spacing.Gutter,
+                top = 10.dp,
+                bottom = Spacing.Xs,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -518,66 +561,14 @@ private fun RecentHeader(onSeeActivity: () -> Unit) {
             text = "Activity",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
+            // One word of labelLarge with 4dp under it is a 28dp target, and this is the only
+            // way from Home into the full history.
             modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onSeeActivity)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .minimumInteractiveComponentSize()
+                .clip(MaterialTheme.shapes.small)
+                .clickable(role = Role.Button, onClick = onSeeActivity)
+                .padding(horizontal = Spacing.Sm, vertical = Spacing.Xs),
         )
-    }
-}
-
-@Composable
-private fun RunRow(
-    run: RunSummary,
-    nowMillis: Long,
-    showDivider: Boolean,
-    onRerun: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier.padding(horizontal = 20.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                // A minimum, not a fixed height, for the same reason the tile grid above uses
-                // IntrinsicSize.Max: at a large font scale these two lines are taller than 56dp,
-                // and a fixed row clips the "9m ago · gemini" line off the bottom.
-                .heightIn(min = 56.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            WorkflowIcon(icon = run.workflowIcon, size = 36.dp)
-            Spacer(Modifier.width(13.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = run.workflowName,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = runSubtitle(run, nowMillis),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(
-                text = formatDuration(run.durationMs),
-                style = MetaTextStyle,
-                color = MaterialTheme.colorScheme.outline,
-            )
-            IconButton(onClick = onRerun) {
-                Icon(
-                    imageVector = Icons.Outlined.Replay,
-                    contentDescription = "Run ${run.workflowName} again",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
-        if (showDivider) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHigh)
-        }
     }
 }
 

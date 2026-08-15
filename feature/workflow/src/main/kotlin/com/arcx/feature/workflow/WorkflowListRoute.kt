@@ -1,36 +1,26 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.arcx.feature.workflow
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.AddToHomeScreen
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
@@ -44,15 +34,12 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,19 +49,22 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.arcx.core.designsystem.component.ArcxListRow
+import com.arcx.core.designsystem.component.ArcxListRowIconSize
+import com.arcx.core.designsystem.component.ArcxSearchField
 import com.arcx.core.designsystem.component.CountPill
 import com.arcx.core.designsystem.component.EmptyState
 import com.arcx.core.designsystem.component.ErrorCard
+import com.arcx.core.designsystem.component.LoadingState
 import com.arcx.core.designsystem.component.SectionLabel
 import com.arcx.core.designsystem.component.WiringChips
 import com.arcx.core.designsystem.component.WorkflowIcon
 import com.arcx.core.designsystem.component.shortLabel
+import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.designsystem.theme.tint
 import com.arcx.core.model.Workflow
 import com.arcx.core.model.WorkflowCategory
@@ -149,25 +139,35 @@ private fun WorkflowListScreen(
     ) { padding ->
         LazyColumn(
             modifier = Modifier.padding(padding),
+            // Off the scale on purpose: this is the FAB's clearance, not a gap between two
+            // things, so it is sized by what floats over the last row rather than by the grid.
             contentPadding = PaddingValues(bottom = 96.dp),
         ) {
             item(key = "title") {
                 Text(
                     text = "Library",
                     style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp),
+                    modifier = Modifier.padding(
+                        start = Spacing.Gutter,
+                        end = Spacing.Gutter,
+                        top = Spacing.Md,
+                    ),
                 )
             }
 
             item(key = "search") {
-                SearchField(
+                ArcxSearchField(
                     query = state.query,
+                    onQueryChange = onQueryChange,
                     // Null, not 0, until the library has actually been read. With the old
                     // half-second crossfade nobody saw the first frames of this screen; now
                     // that it arrives promptly, "Search 0 workflows" is on screen long enough
                     // to read, and a confident wrong number is worse than no number.
-                    total = state.total.takeIf { !state.loading },
-                    onQueryChange = onQueryChange,
+                    placeholder = when (val total = state.total.takeIf { !state.loading }) {
+                        null -> "Search workflows"
+                        1 -> "Search 1 workflow"
+                        else -> "Search $total workflows"
+                    },
                 )
             }
 
@@ -180,7 +180,10 @@ private fun WorkflowListScreen(
             }
 
             when {
-                state.loading -> Unit
+                // A spinner rather than nothing. This branch drew a blank screen, which is what
+                // an empty library looks like — so the first frames of a slow read said "you
+                // have nothing" about a library that was still arriving.
+                state.loading -> item(key = "loading") { LoadingState() }
 
                 // Ahead of the empty states on purpose: a library that could not be read is also
                 // an empty list, and "No workflows yet" would be a confident lie about it.
@@ -188,7 +191,10 @@ private fun WorkflowListScreen(
                     ErrorCard(
                         title = "Your library could not be loaded",
                         message = state.error,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                        modifier = Modifier.padding(
+                            horizontal = Spacing.Gutter,
+                            vertical = Spacing.Lg,
+                        ),
                     )
                 }
 
@@ -286,41 +292,6 @@ private fun LazyListScope.librarySections(
     }
 }
 
-@Composable
-private fun SearchField(query: String, total: Int?, onQueryChange: (String) -> Unit) {
-    TextField(
-        value = query,
-        onValueChange = onQueryChange,
-        singleLine = true,
-        placeholder = {
-            Text(
-                when (total) {
-                    null -> "Search workflows"
-                    1 -> "Search 1 workflow"
-                    else -> "Search $total workflows"
-                },
-            )
-        },
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Outlined.Close, contentDescription = "Clear search")
-                }
-            }
-        },
-        shape = RoundedCornerShape(14.dp),
-        colors = TextFieldDefaults.colors(
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            disabledIndicatorColor = Color.Transparent,
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-    )
-}
-
 /** Counts on the pills so "is there anything under Dev" is answered before the tap. */
 @Composable
 private fun FilterRow(
@@ -332,8 +303,10 @@ private fun FilterRow(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+            // 2dp rather than a scale step: the search field above already carries its own
+            // vertical padding, and anything more here reads as a gap between two screens.
+            .padding(horizontal = Spacing.Gutter, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CountPill(
@@ -387,6 +360,10 @@ private fun SortButton(sort: LibrarySort, onSortChange: (LibrarySort) -> Unit) {
     }
 }
 
+/**
+ * The library's row is the app's row: [ArcxListRow] with the wiring chips as its subtitle, the
+ * star and the overflow menu as its trailing content. One tap runs, a long press configures.
+ */
 @Composable
 private fun WorkflowRow(
     modifier: Modifier = Modifier,
@@ -403,38 +380,25 @@ private fun WorkflowRow(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
-    Column(modifier.padding(horizontal = 20.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                // A floor, not a fixed height: at fontScale 2.0 the name and the wiring chips are
-                // taller than 64dp together, and a fixed row cropped the chips off the bottom.
-                .heightIn(min = 64.dp)
-                .combinedClickable(onClick = onRun, onLongClick = onConfigure),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    ArcxListRow(
+        title = workflow.name,
+        modifier = modifier,
+        leading = {
             val tint = workflow.category.tint()
             WorkflowIcon(
                 icon = workflow.icon,
-                size = 38.dp,
+                size = ArcxListRowIconSize,
                 container = tint.container,
                 content = tint.content,
             )
-            Spacer(Modifier.width(13.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = workflow.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(4.dp))
-                WiringChips(
-                    input = workflow.input.shortLabel,
-                    output = workflow.output.shortLabel,
-                )
-            }
-
+        },
+        subtitle = {
+            WiringChips(
+                input = workflow.input.shortLabel,
+                output = workflow.output.shortLabel,
+            )
+        },
+        trailing = {
             IconButton(onClick = onToggleFavorite, modifier = Modifier.size(36.dp)) {
                 Icon(
                     imageVector = if (workflow.isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
@@ -499,11 +463,11 @@ private fun WorkflowRow(
                     }
                 }
             }
-        }
-        if (showDivider) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHigh)
-        }
-    }
+        },
+        onClick = onRun,
+        onLongClick = onConfigure,
+        showDivider = showDivider,
+    )
 }
 
 @Composable
