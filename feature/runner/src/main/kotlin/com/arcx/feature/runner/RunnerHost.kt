@@ -1,6 +1,9 @@
 package com.arcx.feature.runner
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -25,6 +28,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.arcx.core.designsystem.theme.PanelScrim
 import com.arcx.core.domain.execution.ExecutionState
 import com.arcx.core.model.OutputTarget
 import com.arcx.core.model.WorkflowInput
@@ -166,6 +170,28 @@ fun RunnerHost(
     } else if (compact == null) {
         // Waiting on the preference. One empty frame, and the host Activity is transparent.
     } else if (asDialog) {
+        // The dialog surfaces had no dim at all until this: the sheet below gets one from
+        // ModalBottomSheet and the bubble paints its own, so the compact picker was the one
+        // surface of the three whose backdrop was bit-identical with and without it.
+        //
+        // Two ways of getting one are wrong here, both for the same reason. `backgroundDimEnabled`
+        // on Theme.ArcX.Translucent must stay false, and DialogProperties(decorFitsSystemWindows =
+        // false) quietly reintroduces it — it swaps the window onto Compose's
+        // FloatingDialogWindowTheme, which sets `android:backgroundDimEnabled` back to true.
+        // Measured on device when tried: FLAG_DIM_BEHIND set, dimAmount=0.6, backdrop at 0.27 of
+        // its brightness rather than the intended 0.68. A window dim is composited by the *system*,
+        // so it survives the capturing branch above, where ArcX has to contribute nothing at all
+        // to the frame takeScreenshot photographs — every vision workflow would send a dimmed
+        // picture to the model.
+        //
+        // So it is Compose, and it is in this branch, which means `state.capturing` removes it in
+        // the same recomposition that removes the card. It goes in the runner's own window rather
+        // than inside the Dialog because a dialog window is laid out *inside* the system bars —
+        // filling it left an undimmed strip under the status bar (measured: ratio 1.0 above y=85,
+        // 0.68 below it), and setting decorFitsSystemWindows on that window at runtime does not
+        // move its frame. This Activity is edge to edge, so here the dim covers the display.
+        Box(Modifier.fillMaxSize().background(PanelScrim))
+
         Dialog(
             onDismissRequest = { onClose(RunnerOutcome()) },
             properties = DialogProperties(usePlatformDefaultWidth = false),

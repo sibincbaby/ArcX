@@ -4,6 +4,19 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
+/**
+ * The dim behind a floating workflow panel.
+ *
+ * Named here because two hosts draw the same WorkflowPanelCard over it — the bubble's overlay
+ * window and the runner's compact picker — and a scrim that is 0.32 in one file and something
+ * else in another is exactly how the two surfaces drifted apart in the first place.
+ *
+ * It is deliberately a Compose colour rather than the window's `android:backgroundDimEnabled`.
+ * A window dim is composited by the system, so it would still be in the frame while the runner
+ * has stopped drawing for `takeScreenshot` — every vision workflow would send a dimmed picture.
+ */
+val PanelScrim = Color.Black.copy(alpha = 0.32f)
+
 // Brand fallback for pre-S devices and for users who turn dynamic colour off.
 private val ArcViolet = Color(0xFF5B4BD6)
 private val ArcVioletLight = Color(0xFFC4BEFF)

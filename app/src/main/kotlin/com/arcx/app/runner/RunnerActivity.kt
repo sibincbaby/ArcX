@@ -11,7 +11,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.lifecycleScope
 import com.arcx.core.designsystem.theme.ArcXTheme
 import com.arcx.core.designsystem.theme.ThemeMode
 import com.arcx.core.domain.repository.SettingsRepository
