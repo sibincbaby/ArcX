@@ -1,6 +1,5 @@
 plugins {
     id("arcx.android.feature")
-    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -8,8 +7,10 @@ android {
 }
 
 dependencies {
-    // The bundled gallery and the import/export envelope are the same JSON shape.
-    implementation(libs.kotlinx.serialization.json)
+    // No kotlinx-serialization here on purpose. The bundle envelope and the Json that reads it
+    // belong to :core:data, behind WorkflowBundleRepository; this module only ever handles the
+    // WorkflowSpec it hands back, which comes from :core:model.
+
     // SAF document pickers, launched from Compose.
     implementation(libs.androidx.activity.compose)
 }

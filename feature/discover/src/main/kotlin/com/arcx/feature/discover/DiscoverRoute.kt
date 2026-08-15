@@ -76,6 +76,7 @@ import com.arcx.core.designsystem.theme.PromptTextStyle
 import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.designsystem.theme.tint
 import com.arcx.core.model.WorkflowCategory
+import com.arcx.core.model.WorkflowSpec
 
 /**
  * Ready-made workflows, plus the file end of the library: import a bundle someone sent you,

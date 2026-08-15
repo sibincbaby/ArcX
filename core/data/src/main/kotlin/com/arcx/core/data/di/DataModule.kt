@@ -15,6 +15,7 @@ import com.arcx.core.data.database.WorkflowDao
 import com.arcx.core.data.repository.HistoryRepositoryImpl
 import com.arcx.core.data.repository.ProviderRepositoryImpl
 import com.arcx.core.data.repository.SettingsRepositoryImpl
+import com.arcx.core.data.repository.WorkflowBundleRepositoryImpl
 import com.arcx.core.data.repository.WorkflowRepositoryImpl
 import com.arcx.core.data.screenshot.ScreenshotStoreImpl
 import com.arcx.core.domain.capture.ClipboardAccess
@@ -22,6 +23,7 @@ import com.arcx.core.domain.capture.ScreenshotStore
 import com.arcx.core.domain.repository.HistoryRepository
 import com.arcx.core.domain.repository.ProviderRepository
 import com.arcx.core.domain.repository.SettingsRepository
+import com.arcx.core.domain.repository.WorkflowBundleRepository
 import com.arcx.core.domain.repository.WorkflowRepository
 import dagger.Binds
 import dagger.Module
@@ -82,6 +84,10 @@ internal abstract class DataModule {
     @Binds
     @Singleton
     abstract fun workflowRepository(impl: WorkflowRepositoryImpl): WorkflowRepository
+
+    @Binds
+    @Singleton
+    abstract fun workflowBundleRepository(impl: WorkflowBundleRepositoryImpl): WorkflowBundleRepository
 
     @Binds
     @Singleton

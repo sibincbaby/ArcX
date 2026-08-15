@@ -11,8 +11,8 @@ import com.arcx.core.data.database.WorkflowDao
 import com.arcx.core.data.di.SettingsDataStore
 import com.arcx.core.data.mapper.toEntity
 import com.arcx.core.data.mapper.toModel
+import com.arcx.core.data.bundle.toWorkflowAsStarter
 import com.arcx.core.data.seed.readStarterWorkflows
-import com.arcx.core.data.seed.toWorkflow
 import com.arcx.core.domain.repository.WorkflowRepository
 import com.arcx.core.model.Workflow
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -92,7 +92,9 @@ internal class WorkflowRepositoryImpl @Inject constructor(
         val fresh = starters.filter { it.name !in alreadyOffered }
         if (fresh.isNotEmpty()) {
             val now = time.nowMillis()
-            dao.insertAll(fresh.map { it.toWorkflow(now).toEntity() })
+            // The starter mapper, not the import one: a starter is meant to arrive pinned and
+            // read-only, which is exactly what the import path has to strip.
+            dao.insertAll(fresh.map { it.toWorkflowAsStarter(now).toEntity() })
         }
         dataStore.edit { prefs ->
             prefs[SEEDED_STARTERS] = alreadyOffered + starters.map { it.name }

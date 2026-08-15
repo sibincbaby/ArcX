@@ -60,8 +60,14 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.Work
 import androidx.compose.ui.graphics.vector.ImageVector
 
-/** The icon a workflow gets when nothing else is chosen. */
-const val DEFAULT_WORKFLOW_ICON: String = "auto_awesome"
+/**
+ * The icon a workflow gets when nothing else is chosen.
+ *
+ * The value belongs to `:core:model`, where `Workflow` and `WorkflowSpec` both default to it and
+ * where the modules that cannot see Compose can reach it. Re-exported here under the name every
+ * drawing-side caller already imports, so there is one literal rather than two that can drift.
+ */
+const val DEFAULT_WORKFLOW_ICON: String = com.arcx.core.model.DEFAULT_WORKFLOW_ICON
 
 /** One entry in the picker: the stored key, what to draw, and a word to search it by. */
 data class WorkflowIconOption(

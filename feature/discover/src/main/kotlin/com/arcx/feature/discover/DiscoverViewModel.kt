@@ -1,16 +1,13 @@
 package com.arcx.feature.discover
 
-import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.arcx.core.common.di.IoDispatcher
+import com.arcx.core.domain.repository.WorkflowBundleRepository
 import com.arcx.core.domain.repository.WorkflowRepository
-import com.arcx.core.domain.usecase.SaveWorkflowUseCase
 import com.arcx.core.model.WorkflowCategory
+import com.arcx.core.model.WorkflowSpec
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,10 +17,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
-internal const val GALLERY_ASSET = "gallery.json"
 internal const val EXPORT_FILE_NAME = "arcx-workflows.json"
 
 internal data class DiscoverUiState(
@@ -83,12 +78,17 @@ private fun DiscoverUiState.withDerived(): DiscoverUiState = copy(
         .filter { it.second > 0 },
 )
 
+/**
+ * The gallery, and the file end of the library.
+ *
+ * Reading the bundled gallery, parsing an imported file and writing an export all belong to
+ * [WorkflowBundleRepository] — this used to inject `@ApplicationContext Context` and do its own
+ * `contentResolver` IO, which made it the only ViewModel in the app that did either.
+ */
 @HiltViewModel
 internal class DiscoverViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
     private val workflows: WorkflowRepository,
-    private val saveWorkflow: SaveWorkflowUseCase,
-    @IoDispatcher private val io: CoroutineDispatcher,
+    private val bundles: WorkflowBundleRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DiscoverUiState())
@@ -105,14 +105,7 @@ internal class DiscoverViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val result = runCatching {
-                withContext(io) {
-                    context.assets.open(GALLERY_ASSET)
-                        .bufferedReader()
-                        .use { bundleJson.decodeFromString(WorkflowBundle.serializer(), it.readText()) }
-                        .workflows
-                }
-            }
+            val result = runCatching { bundles.readGallery() }
             updateState { state ->
                 result.fold(
                     onSuccess = { state.copy(loading = false, gallery = it) },
@@ -150,47 +143,44 @@ internal class DiscoverViewModel @Inject constructor(
     fun install(spec: WorkflowSpec, openEditor: Boolean = false) {
         viewModelScope.launch {
             updateState { it.copy(busy = true) }
-            val saved = runCatching { saveWorkflow(spec.toWorkflow()) }
+            val saved = runCatching { bundles.install(listOf(spec)).firstOrNull() }.getOrNull()
             updateState {
                 it.copy(
                     busy = false,
                     selected = null,
-                    message = if (saved.isSuccess) {
+                    message = if (saved != null) {
                         "${spec.name} added to your workflows"
                     } else {
                         "Could not add ${spec.name}"
                     },
                 )
             }
-            if (openEditor) saved.getOrNull()?.let { installs.send(it.id) }
+            if (openEditor) saved?.let { installs.send(it.id) }
         }
     }
 
     /**
-     * Import validates before it writes: a truncated or unrelated JSON file has to produce a
-     * sentence the user can act on, not a crash and not a half-populated library.
+     * Reading and installing are two calls, not one, and the gap between them is the point: the
+     * file is fully parsed and sanitised before anything is written, which is where a review sheet
+     * goes. Nothing shows that gap to the user yet — it exists so that it can.
+     *
+     * A truncated or unrelated JSON file still has to produce a sentence the user can act on, not a
+     * crash and not a half-populated library.
      */
     fun import(uri: Uri) {
         viewModelScope.launch {
             updateState { it.copy(busy = true) }
-            val specs = runCatching {
-                withContext(io) {
-                    val text = context.contentResolver.openInputStream(uri)
-                        ?.bufferedReader()
-                        ?.use { it.readText() }
-                        ?: error("That file could not be opened")
-                    val bundle = bundleJson.decodeFromString(WorkflowBundle.serializer(), text)
-                    bundle.workflows.filter { it.name.isNotBlank() && it.prompt.isNotBlank() }
-                }
-            }
-
-            val message = specs.fold(
-                onSuccess = { imported ->
-                    if (imported.isEmpty()) {
+            val message = runCatching { bundles.read(uri) }.fold(
+                onSuccess = { specs ->
+                    if (specs.isEmpty()) {
                         "That file has no workflows in it"
                     } else {
-                        imported.forEach { saveWorkflow(it.toWorkflow()) }
-                        "Imported ${imported.size} ${if (imported.size == 1) "workflow" else "workflows"}"
+                        runCatching { bundles.install(specs) }.fold(
+                            onSuccess = { added ->
+                                "Imported ${added.size} ${if (added.size == 1) "workflow" else "workflows"}"
+                            },
+                            onFailure = { "Those workflows could not be added" },
+                        )
                     }
                 },
                 onFailure = { "That does not look like an ArcX workflow file" },
@@ -204,13 +194,7 @@ internal class DiscoverViewModel @Inject constructor(
             updateState { it.copy(busy = true) }
             val count = runCatching {
                 val all = workflows.observeAll().first()
-                val bundle = WorkflowBundle(workflows = all.map { it.toSpec() })
-                withContext(io) {
-                    context.contentResolver.openOutputStream(uri)
-                        ?.bufferedWriter()
-                        ?.use { it.write(bundleJson.encodeToString(WorkflowBundle.serializer(), bundle)) }
-                        ?: error("That file could not be written")
-                }
+                bundles.write(uri, all)
                 all.size
             }
             updateState {

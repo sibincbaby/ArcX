@@ -3,6 +3,16 @@ package com.arcx.core.model
 import kotlinx.serialization.Serializable
 
 /**
+ * The icon a workflow gets when nothing else is chosen.
+ *
+ * Declared here rather than in the design system because three modules that cannot see Compose
+ * need it: [Workflow]'s own default, [WorkflowSpec]'s, and the import sanitiser in `:core:data`
+ * that turns a blank icon back into a key. `:core:designsystem` re-exports this value under the
+ * same name, so the drawing side and the storing side cannot drift apart.
+ */
+const val DEFAULT_WORKFLOW_ICON: String = "auto_awesome"
+
+/**
  * A reusable AI action. This is the whole product in one type: the user builds one of these
  * once, then fires it from anywhere on the device.
  */
@@ -14,7 +24,7 @@ data class Workflow(
      * Icon key from the design system's set, shown in pickers, shortcuts and the widget.
      * Workflows made before that set existed hold an emoji instead, and still render as one.
      */
-    val icon: String = "auto_awesome",
+    val icon: String = DEFAULT_WORKFLOW_ICON,
     val category: WorkflowCategory = WorkflowCategory.CUSTOM,
     val input: InputSource = InputSource.SELECTED_TEXT,
     val prompt: String,
