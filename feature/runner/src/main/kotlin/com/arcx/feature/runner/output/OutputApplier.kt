@@ -186,7 +186,8 @@ private fun Context.postResult(workflow: Workflow, text: String) {
         NOTIFICATION_ID,
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_arcx_result)
-            .setContentTitle("${workflow.icon} ${workflow.name}")
+            // The name alone: a workflow's icon is a key like "edit_note" now, not a glyph.
+            .setContentTitle(workflow.name)
             .setContentText(body.lineSequence().firstOrNull { it.isNotBlank() }.orEmpty())
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)

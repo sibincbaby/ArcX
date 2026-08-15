@@ -53,9 +53,23 @@ sealed class AiError(message: String, cause: Throwable? = null) : Exception(mess
     class NoInput :
         AiError("This workflow needs some text to work on")
 
-    /** A screenshot workflow ran but no image could be captured. */
-    class NoScreenshot :
-        AiError("Could not capture the screen")
+    /**
+     * A screenshot workflow ran but there was no image to send.
+     *
+     * [captureAvailable] separates the two reasons, which need opposite advice. False means the
+     * accessibility service cannot take screenshots — the user has something to grant. True means
+     * it can, and simply had nothing to photograph: the workflow was fired from a surface where
+     * ArcX itself was the only thing on screen. Telling the second user to grant a permission
+     * they already granted is how this bug hid.
+     */
+    class NoScreenshot(val captureAvailable: Boolean) :
+        AiError(
+            if (captureAvailable) {
+                "There was nothing on screen to photograph"
+            } else {
+                "Could not capture the screen"
+            },
+        )
 
     class Unknown(cause: Throwable?) :
         AiError(cause?.message ?: "Something went wrong", cause)

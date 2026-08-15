@@ -6,7 +6,7 @@ import androidx.room.TypeConverters
 
 @Database(
     entities = [WorkflowEntity::class, ProviderEntity::class, RunEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

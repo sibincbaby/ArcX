@@ -17,6 +17,7 @@ import android.view.accessibility.AccessibilityWindowInfo
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.scale
 import com.arcx.integration.entrypoints.ArcxDeepLinks
+import com.arcx.integration.entrypoints.di.entrypointsGraph
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,6 +25,8 @@ import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import kotlin.math.roundToInt
@@ -180,6 +183,35 @@ class ArcxAccessibilityService : AccessibilityService() {
         runCatching {
             accessibilityButtonController.registerAccessibilityButtonCallback(accessibilityButton)
         }
+        // Follows the user's choice for as long as the service lives. The manifest cannot express
+        // "only if asked", so the flag is applied at runtime instead — see [offerAccessibilityButton].
+        scope.launch {
+            entrypointsGraph().settingsRepository().settings
+                .map { it.accessibilityButtonOffered }
+                .distinctUntilChanged()
+                .collect { offerAccessibilityButton(it) }
+        }
+    }
+
+    /**
+     * Adds or removes `FLAG_REQUEST_ACCESSIBILITY_BUTTON` on the live service.
+     *
+     * Declaring it in the service config would put ArcX in the accessibility-button and
+     * volume-key target list for everyone who grants the permission, whether they want it there or
+     * not — and that list is a system control the user may already have pointed at something they
+     * rely on. Setting it here means the permission and the shortcut are two separate decisions.
+     */
+    private fun offerAccessibilityButton(offer: Boolean) {
+        val info = runCatching { serviceInfo }.getOrNull() ?: return
+        val updated = if (offer) {
+            info.flags or AccessibilityServiceInfo.FLAG_REQUEST_ACCESSIBILITY_BUTTON
+        } else {
+            info.flags and AccessibilityServiceInfo.FLAG_REQUEST_ACCESSIBILITY_BUTTON.inv()
+        }
+        if (updated == info.flags) return
+        info.flags = updated
+        // Throws if the service has been unbound since the flow emitted.
+        runCatching { serviceInfo = info }
     }
 
     /**
@@ -224,8 +256,22 @@ class ArcxAccessibilityService : AccessibilityService() {
      */
     private val accessibilityButton = object : AccessibilityButtonController.AccessibilityButtonCallback() {
         override fun onClicked(controller: AccessibilityButtonController) {
-            runCatching { startActivity(ArcxDeepLinks.intent(this@ArcxAccessibilityService)) }
+            // Grab the screen *before* launching anything. This callback runs while the user's own
+            // app is still the only thing on the display, which is the single moment a picture of
+            // "their screen" means anything — a moment the launch below then destroys. The bubble
+            // has always done this; without it here, a vision workflow fired from the
+            // accessibility button had no frame to send and failed claiming a missing permission.
+            if (canCaptureScreenImageNow()) {
+                captureScreenImage(onGrabbed = { launchPicker() })
+            } else {
+                launchPicker()
+            }
         }
+    }
+
+    /** Never throws: this is a service the user cannot easily restart. */
+    private fun launchPicker() {
+        runCatching { startActivity(ArcxDeepLinks.intent(this@ArcxAccessibilityService)) }
     }
 
     override fun onInterrupt() = Unit
@@ -368,9 +414,10 @@ class ArcxAccessibilityService : AccessibilityService() {
      * It fires exactly once on every path, including the paths that give up, because a caller that
      * never hears back stays hidden forever.
      */
-    fun captureScreenImage(onGrabbed: () -> Unit) {
+    fun captureScreenImage(onGrabbed: () -> Unit, onEncoded: (ByteArray?) -> Unit = {}) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !canScreenshot()) {
             mainHandler.post(onGrabbed)
+            onEncoded(null)
             return
         }
         lastScreenshotAt = SystemClock.elapsedRealtime()
@@ -385,7 +432,7 @@ class ArcxAccessibilityService : AccessibilityService() {
                 object : TakeScreenshotCallback {
                     override fun onSuccess(screenshot: ScreenshotResult) {
                         mainHandler.post(onGrabbed)
-                        keepFrame(screenshot)
+                        onEncoded(keepFrame(screenshot))
                     }
 
                     /**
@@ -397,13 +444,19 @@ class ArcxAccessibilityService : AccessibilityService() {
                      */
                     override fun onFailure(errorCode: Int) {
                         mainHandler.post(onGrabbed)
+                        // Deliberately not the held frame: a caller that asked for a picture of
+                        // *now* would rather have nothing than a picture of a different screen.
+                        onEncoded(null)
                     }
                 },
             )
             true
         }.getOrDefault(false)
 
-        if (!started) mainHandler.post(onGrabbed)
+        if (!started) {
+            mainHandler.post(onGrabbed)
+            onEncoded(null)
+        }
     }
 
     /**
@@ -428,7 +481,7 @@ class ArcxAccessibilityService : AccessibilityService() {
      * or compressed until the pixels are in the heap.
      */
     @RequiresApi(Build.VERSION_CODES.R)
-    private fun keepFrame(screenshot: ScreenshotResult) {
+    private fun keepFrame(screenshot: ScreenshotResult): ByteArray? {
         val buffer = screenshot.hardwareBuffer
         val jpeg = try {
             val wrapped = runCatching {
@@ -443,11 +496,15 @@ class ArcxAccessibilityService : AccessibilityService() {
             buffer.close()
         }
 
-        if (jpeg == null) return
+        if (jpeg == null) return null
         frame = ScreenFrame(jpeg = jpeg, takenAt = SystemClock.elapsedRealtime())
         // Encoding takes long enough that the user can have switched the service off underneath
         // it, and the teardown that cleared `frame` would then have run before this wrote to it.
-        if (!scope.isActive) frame = null
+        if (!scope.isActive) {
+            frame = null
+            return null
+        }
+        return jpeg
     }
 
     private fun readForegroundWindow(): ScreenSnapshot? {

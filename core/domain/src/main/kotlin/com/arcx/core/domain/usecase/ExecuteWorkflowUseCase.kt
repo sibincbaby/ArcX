@@ -49,26 +49,45 @@ class ExecuteWorkflowUseCase @Inject constructor(
     private val time: TimeSource,
 ) {
 
-    operator fun invoke(workflow: Workflow, input: WorkflowInput): Flow<ExecutionState> = flow {
+    /**
+     * [recordHistory] false is for the builder's "try it" button, which fires a workflow that
+     * has not been saved and may never be. Recording it would leave rows in History pointing at
+     * a workflow id that does not exist. Everything else about the path is identical — this is
+     * still the only place a workflow runs.
+     */
+    operator fun invoke(
+        workflow: Workflow,
+        input: WorkflowInput,
+        recordHistory: Boolean = true,
+    ): Flow<ExecutionState> = flow {
         val startedAt = time.nowMillis()
         emit(ExecutionState.Preparing)
 
         val config = providers.resolve(workflow.providerId)
         if (config == null) {
-            fail(workflow, null, "", startedAt, input.text.orEmpty(), AiError.NoProvider())
+            fail(
+                workflow, null, "", startedAt, input.text.orEmpty(),
+                AiError.NoProvider(), recordHistory = recordHistory,
+            )
             return@flow
         }
 
         val model = workflow.model ?: config.defaultModel
         val apiKey = providers.apiKey(config.id)
         if (!config.type.isLocal && apiKey.isNullOrBlank()) {
-            fail(workflow, config, model, startedAt, input.text.orEmpty(), AiError.MissingKey(config.label))
+            fail(
+                workflow, config, model, startedAt, input.text.orEmpty(),
+                AiError.MissingKey(config.label), recordHistory = recordHistory,
+            )
             return@flow
         }
 
         val provider = registry[config.type]
         if (provider == null) {
-            fail(workflow, config, model, startedAt, input.text.orEmpty(), AiError.NoProvider())
+            fail(
+                workflow, config, model, startedAt, input.text.orEmpty(),
+                AiError.NoProvider(), recordHistory = recordHistory,
+            )
             return@flow
         }
 
@@ -86,6 +105,14 @@ class ExecuteWorkflowUseCase @Inject constructor(
             screenshot?.let { Attachment(mimeType = JPEG, bytes = it) },
         )
 
+        // What History stores is whatever picture of the screen was actually sent, whoever took it.
+        // The runner now grabs the frame itself — it is the only layer that can blank its own
+        // window first — so keying this off the local capture above silently stopped recording the
+        // image for every entry point except the bubble.
+        val storedImage = screenshot ?: attachments
+            .firstOrNull { workflow.input == InputSource.SCREENSHOT && it.mimeType == JPEG }
+            ?.bytes
+
         // A screenshot run records no input text, and that is correct: the picture is the input,
         // and it is stored. History once kept the screen's text alongside it, which meant the one
         // thing ArcX stored that was never sent to the provider was a full text dump of the
@@ -94,16 +121,28 @@ class ExecuteWorkflowUseCase @Inject constructor(
         // Before the provider, deliberately: an imageless vision prompt costs a paid call to come
         // back with nothing useful. [needsText] never covers this — SCREENSHOT is not a text source.
         if (workflow.input == InputSource.SCREENSHOT && attachments.isEmpty()) {
-            fail(workflow, config, model, startedAt, inputText, AiError.NoScreenshot())
+            fail(
+                workflow, config, model, startedAt, inputText,
+                AiError.NoScreenshot(captureAvailable = screen.canScreenshot()),
+                recordHistory = recordHistory,
+            )
             return@flow
         }
 
         if (inputText.isBlank() && attachments.isEmpty() && workflow.needsText) {
-            fail(workflow, config, model, startedAt, inputText, AiError.NoInput())
+            fail(
+                workflow, config, model, startedAt, inputText,
+                AiError.NoInput(), recordHistory = recordHistory,
+            )
             return@flow
         }
 
-        val vars = variables(inputText, input)
+        // Only what the prompt actually asks for. Resolving the full set meant every run —
+        // including a rewrite whose prompt is just {{input}} — walked the accessibility tree
+        // for {{screen_text}} and read the clipboard, before a single byte was sent.
+        val used = PromptTemplate.variablesIn(workflow.prompt) +
+            PromptTemplate.variablesIn(workflow.systemPrompt.orEmpty())
+        val vars = variables(used.distinct(), inputText, input)
         val request = AiRequest(
             model = model,
             userPrompt = PromptTemplate.render(workflow.prompt, vars),
@@ -128,10 +167,16 @@ class ExecuteWorkflowUseCase @Inject constructor(
 
         val error = failure
         if (error != null) {
-            fail(workflow, config, model, startedAt, inputText, error, answer.toString(), screenshot)
+            fail(
+                workflow, config, model, startedAt, inputText, error,
+                answer.toString(), storedImage, recordHistory,
+            )
         } else {
             val text = answer.toString()
-            record(workflow, config, model, startedAt, inputText, RunStatus.SUCCESS, text, null, screenshot)
+            record(
+                workflow, config, model, startedAt, inputText,
+                RunStatus.SUCCESS, text, null, storedImage, recordHistory,
+            )
             emit(ExecutionState.Success(text, time.nowMillis() - startedAt))
         }
     }
@@ -177,18 +222,37 @@ class ExecuteWorkflowUseCase @Inject constructor(
     private val Workflow.needsText: Boolean
         get() = input in TEXT_SOURCES
 
-    private suspend fun variables(text: String, input: WorkflowInput): Map<String, String> {
+    /**
+     * Resolves exactly the placeholders [used] names, and nothing else.
+     *
+     * Two of these are not free — the clipboard is an IPC and screen text is an accessibility
+     * snapshot — and they used to be fetched for every run whether the prompt mentioned them or
+     * not, on the path between the user's tap and the first token. A name this does not know
+     * resolves to an empty string, which is what [PromptTemplate.render] does with an absent
+     * key anyway, so an unknown placeholder behaves exactly as before.
+     */
+    private suspend fun variables(
+        used: List<String>,
+        text: String,
+        input: WorkflowInput,
+    ): Map<String, String> {
+        if (used.isEmpty()) return emptyMap()
         val moment = Instant.ofEpochMilli(time.nowMillis()).atZone(ZoneId.systemDefault())
-        return buildMap {
-            put(PromptVariable.SELECTED_TEXT.name, text)
-            put(PromptVariable.INPUT.name, text)
-            put(PromptVariable.SHARE_TEXT.name, text)
-            put(PromptVariable.CLIPBOARD.name, readClipboard())
-            put(PromptVariable.SCREEN_TEXT.name, readScreenText())
-            put(PromptVariable.CURRENT_APP.name, currentApp(input))
-            put(PromptVariable.TODAY.name, moment.format(DateTimeFormatter.ISO_LOCAL_DATE))
-            put(PromptVariable.NOW.name, moment.format(TIME_FORMAT))
-            put(PromptVariable.SHARE_SUBJECT.name, input.shareSubject.orEmpty())
+        return used.associateWith { name ->
+            when (name) {
+                PromptVariable.SELECTED_TEXT.name,
+                PromptVariable.INPUT.name,
+                PromptVariable.SHARE_TEXT.name,
+                -> text
+
+                PromptVariable.CLIPBOARD.name -> readClipboard()
+                PromptVariable.SCREEN_TEXT.name -> readScreenText()
+                PromptVariable.CURRENT_APP.name -> currentApp(input)
+                PromptVariable.TODAY.name -> moment.format(DateTimeFormatter.ISO_LOCAL_DATE)
+                PromptVariable.NOW.name -> moment.format(TIME_FORMAT)
+                PromptVariable.SHARE_SUBJECT.name -> input.shareSubject.orEmpty()
+                else -> ""
+            }
         }
     }
 
@@ -231,10 +295,11 @@ class ExecuteWorkflowUseCase @Inject constructor(
         error: AiError,
         partial: String = "",
         screenshot: ByteArray? = null,
+        recordHistory: Boolean = true,
     ) {
         record(
             workflow, config, model, startedAt, inputText,
-            RunStatus.FAILED, partial.ifEmpty { null }, error, screenshot,
+            RunStatus.FAILED, partial.ifEmpty { null }, error, screenshot, recordHistory,
         )
         emit(ExecutionState.Failed(error))
     }
@@ -249,8 +314,9 @@ class ExecuteWorkflowUseCase @Inject constructor(
         output: String?,
         error: AiError?,
         screenshot: ByteArray?,
+        recordHistory: Boolean,
     ) {
-        if (!settings.current().historyEnabled) return
+        if (!recordHistory || !settings.current().historyEnabled) return
         val id = UUID.randomUUID().toString()
         // Written only once there is a row to point at it, and under that row's id, so clearing
         // history reaches every image. A file saved for an unrecorded run would be invisible to

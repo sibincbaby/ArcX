@@ -25,6 +25,19 @@ interface ScreenContextProvider {
      */
     suspend fun screenshot(): ByteArray?
 
+    /**
+     * Takes a **fresh** frame now and returns it, instead of handing back the cached one.
+     *
+     * The caller must have stopped drawing its own window first. This photographs the composited
+     * display, so anything of ArcX's still on screen ends up in the picture — that is the whole
+     * reason the bubble blanks its handle before grabbing, and why any other surface has to do the
+     * same before calling this.
+     *
+     * Returns null when capture is unavailable, when the platform refuses (a secure window), or
+     * when two grabs land too close together. Callers fall back to [screenshot].
+     */
+    suspend fun captureScreenshotNow(): ByteArray?
+
     /** Package name of the foreground app, or null when unavailable. */
     fun currentPackage(): String?
 

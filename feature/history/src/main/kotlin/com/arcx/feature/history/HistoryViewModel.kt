@@ -2,13 +2,20 @@ package com.arcx.feature.history
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.arcx.core.common.di.DefaultDispatcher
 import com.arcx.core.common.time.TimeSource
 import com.arcx.core.domain.capture.ClipboardAccess
 import com.arcx.core.domain.repository.HistoryRepository
 import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.domain.usecase.ClearHistoryUseCase
+import com.arcx.core.model.RunOutcome
 import com.arcx.core.model.RunRecord
+import com.arcx.core.model.RunStatus
+import com.arcx.core.model.RunSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -24,15 +31,37 @@ import javax.inject.Inject
 /** One day's worth of runs under a heading the user can read at a glance. */
 data class HistoryDay(
     val label: String,
-    val runs: List<RunRecord>,
+    val runs: List<RunSummary>,
+)
+
+/**
+ * Today at a glance, above the list.
+ *
+ * Today rather than all time on purpose: a lifetime average is a number that stops moving, and
+ * the question this screen answers is "is ArcX behaving right now" — a median that has doubled
+ * or a failure count that is not zero is the thing worth noticing.
+ */
+data class RunStats(
+    val runsToday: Int = 0,
+    /** Median of today's successful runs. Median, not mean: one 30s timeout should not skew it. */
+    val medianMs: Long = 0L,
+    val failedToday: Int = 0,
 )
 
 data class HistoryUiState(
     val days: List<HistoryDay> = emptyList(),
+    val stats: RunStats = RunStats(),
     val historyEnabled: Boolean = true,
     /** Pinned at emission time so every row's "3h ago" is measured against the same instant. */
     val nowMillis: Long = 0L,
     val loading: Boolean = true,
+    /**
+     * The full row behind the open detail sheet, fetched by id when the sheet opens. The list
+     * carries [RunSummary], which has no previews in it — those are most of a row's bytes and
+     * loading them for every row to show one was the reason this screen slowed down as history
+     * grew.
+     */
+    val detail: RunRecord? = null,
 )
 
 @HiltViewModel
@@ -42,24 +71,49 @@ class HistoryViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val clipboard: ClipboardAccess,
     private val time: TimeSource,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
+    // Bounded by the retention cap; the DAO already returns newest first, so no re-sort here.
+    private val detail = MutableStateFlow<RunRecord?>(null)
+
+    // Fixed at construction: bounding the stats query by a moving "now" would restart it on
+    // every emission, and the number it feeds only has to be right for the session.
+    private val startOfToday = startOfDay(time.nowMillis())
+
     val uiState: StateFlow<HistoryUiState> = combine(
-        history.observeAll().map { runs -> runs.sortedByDescending { it.startedAt } },
+        history.observeRecent(),
+        history.observeSince(startOfToday),
         settings.settings.map { it.historyEnabled },
-    ) { runs, enabled ->
+        detail,
+    ) { runs, today, enabled, openRun ->
         val now = time.nowMillis()
         HistoryUiState(
             days = groupByDay(runs, now),
+            stats = statsFor(today),
             historyEnabled = enabled,
             nowMillis = now,
             loading = false,
+            detail = openRun,
         )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
-        initialValue = HistoryUiState(),
-    )
+    }
+        // Grouping a thousand rows by calendar day allocates a ZonedDateTime per row. That is
+        // cheap once and ruinous on the UI thread, which is where stateIn(viewModelScope)
+        // collects unless it is told otherwise.
+        .flowOn(defaultDispatcher)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+            initialValue = HistoryUiState(),
+        )
+
+    fun onOpenRun(id: String) {
+        viewModelScope.launch { detail.value = history.get(id) }
+    }
+
+    fun onCloseRun() {
+        detail.value = null
+    }
 
     fun onClearHistory() {
         viewModelScope.launch { clearHistory() }
@@ -87,7 +141,7 @@ private val OTHER_YEAR = DateTimeFormatter.ofPattern("d MMMM yyyy")
  * Groups by local calendar day rather than by elapsed hours: "Yesterday" has to mean the day
  * before, not twenty-four hours ago, or a run at 01:00 lands under the wrong heading.
  */
-internal fun groupByDay(runs: List<RunRecord>, nowMillis: Long): List<HistoryDay> {
+internal fun groupByDay(runs: List<RunSummary>, nowMillis: Long): List<HistoryDay> {
     if (runs.isEmpty()) return emptyList()
     val zone = ZoneId.systemDefault()
     val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
@@ -95,6 +149,30 @@ internal fun groupByDay(runs: List<RunRecord>, nowMillis: Long): List<HistoryDay
     return runs
         .groupBy { Instant.ofEpochMilli(it.startedAt).atZone(zone).toLocalDate() }
         .map { (date, dayRuns) -> HistoryDay(dayLabel(date, today), dayRuns) }
+}
+
+/**
+ * [today] is already only today's runs — the query is bounded by a timestamp rather than the
+ * whole table being loaded and filtered, which is what this used to do.
+ */
+internal fun statsFor(today: List<RunOutcome>): RunStats {
+    val durations = today
+        .filter { it.status == RunStatus.SUCCESS }
+        .map { it.durationMs }
+        .sorted()
+
+    return RunStats(
+        runsToday = today.size,
+        medianMs = if (durations.isEmpty()) 0L else durations[durations.size / 2],
+        failedToday = today.count { it.status == RunStatus.FAILED },
+    )
+}
+
+/** Local calendar midnight — the boundary [groupByDay] uses, so both agree on "today". */
+internal fun startOfDay(nowMillis: Long): Long {
+    val zone = ZoneId.systemDefault()
+    return Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate().atStartOfDay(zone)
+        .toInstant().toEpochMilli()
 }
 
 private fun dayLabel(date: LocalDate, today: LocalDate): String = when {

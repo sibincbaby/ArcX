@@ -508,4 +508,73 @@ class ExecuteWorkflowUseCaseTest {
         assertNotNull(record.screenshotPath)
     }
 
+    /**
+     * The runner takes the picture itself now — it is the only layer that can blank its own window
+     * first — and hands it in as an attachment. Keying History off the use case's own capture meant
+     * every entry point except the bubble ran fine and quietly stored no image at all.
+     */
+    @Test
+    fun `screenshot supplied by the caller is the one stored in history`() = runTest {
+        val history = FakeHistoryRepository()
+        val screenshots = FakeScreenshotStore()
+        val shot = Workflow(id = "s1", name = "Look", prompt = "Describe it", input = InputSource.SCREENSHOT)
+        val fromRunner = byteArrayOf(9, 9, 9)
+        val useCase = useCase(
+            workflows = FakeWorkflowRepository(listOf(shot)),
+            history = history,
+            screenshots = screenshots,
+            // Capture is available, but the caller already brought a frame, so nothing here is used.
+            screen = FakeScreenContextProvider(available = true, canCapture = true, jpeg = byteArrayOf(1)),
+        )
+
+        useCase(
+            shot,
+            WorkflowInput(attachments = listOf(Attachment("image/jpeg", fromRunner))),
+        ).test { cancelAndIgnoreRemainingEvents() }
+
+        val record = history.records.single()
+        assertNotNull(record.screenshotPath)
+        assertArrayEquals(fromRunner, screenshots.saved.getValue(record.id))
+    }
+
+
+    /**
+     * The two costly placeholders are only resolved when the prompt asks for them.
+     *
+     * Screen text is an accessibility snapshot and the clipboard is an IPC, and both used to be
+     * fetched for every run regardless — latency between the tap and the first token, on the
+     * fastest path in the product, spent on values that were then thrown away.
+     */
+    @Test
+    fun `a prompt that names no placeholders reads neither the screen nor the clipboard`() = runTest {
+        val plain = workflow.copy(prompt = "Say something nice.", systemPrompt = null)
+        val screen = FakeScreenContextProvider(available = true, text = "on screen")
+        val clipboard = FakeClipboard("clip")
+
+        useCase(
+            workflows = FakeWorkflowRepository(listOf(plain)),
+            screen = screen,
+            clipboard = clipboard,
+        )(plain, input).collect { }
+
+        assertEquals(0, screen.screenTextReads)
+        assertEquals(0, clipboard.reads)
+    }
+
+    /** ...and is still resolved when it is named, which is the half that must not regress. */
+    @Test
+    fun `a prompt that names screen text still gets it`() = runTest {
+        val reader = workflow.copy(prompt = "Screen: {{screen_text}}", systemPrompt = null)
+        val screen = FakeScreenContextProvider(available = true, text = "on screen")
+        val provider = FakeAiProvider(deltas = listOf("ok"))
+
+        useCase(
+            workflows = FakeWorkflowRepository(listOf(reader)),
+            provider = provider,
+            screen = screen,
+        )(reader, input).collect { }
+
+        assertEquals("Screen: on screen", provider.lastRequest?.userPrompt)
+    }
+
 }

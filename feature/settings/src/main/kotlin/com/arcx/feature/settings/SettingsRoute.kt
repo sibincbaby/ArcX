@@ -37,8 +37,17 @@ private enum class SettingsScreen {
     ROOT, PROVIDERS, PROVIDER_EDIT, ENTRY_POINTS, APPEARANCE, PRIVACY, ABOUT
 }
 
+/**
+ * [startAtEntryPoints] is for the surface strip on Home. A chip that says the bubble is off is
+ * only useful if tapping it reaches the switch, and landing on the Settings index instead would
+ * make the strip a signpost rather than a control.
+ */
 @Composable
-fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsRoute(
+    onBack: () -> Unit,
+    startAtEntryPoints: Boolean = false,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -50,7 +59,9 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
         onPauseOrDispose { }
     }
 
-    var screen by rememberSaveable { mutableStateOf(SettingsScreen.ROOT) }
+    var screen by rememberSaveable {
+        mutableStateOf(if (startAtEntryPoints) SettingsScreen.ENTRY_POINTS else SettingsScreen.ROOT)
+    }
     var editingProviderId by rememberSaveable { mutableStateOf<String?>(null) }
     // Bumped on every entry into the editor so each visit gets its own ViewModel rather than
     // inheriting the previous provider's half-typed form.
@@ -74,6 +85,7 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
         SettingsScreen.ROOT -> SettingsRootScreen(
             state = state,
             onOpen = { screen = it },
+            onBack = onBack,
         )
 
         SettingsScreen.PROVIDERS -> ProvidersScreen(
@@ -94,6 +106,7 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
             bubbleEnabled = state.settings.bubbleEnabled,
             overlayGranted = state.permissions.overlayGranted,
             screenReadingEnabled = state.permissions.screenReadingEnabled,
+            screenReadingRunning = state.permissions.screenReadingRunning,
             batteryExempt = state.permissions.batteryExempt,
             hasAutostartScreen = state.permissions.hasAutostartScreen,
             launcherIconEnabled = state.permissions.launcherIconEnabled,
@@ -105,6 +118,8 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
             onBubbleEnabledChange = viewModel::onBubbleEnabledChange,
             onLauncherIconChange = viewModel::onLauncherIconChange,
             onAddQuickTile = viewModel::onAddQuickTile,
+            accessibilityButtonOffered = state.settings.accessibilityButtonOffered,
+            onAccessibilityButtonOfferedChange = viewModel::onAccessibilityButtonOfferedChange,
             onBubbleOpensFullListChange = viewModel::onBubbleOpensFullListChange,
             onCompactPickerChange = viewModel::onCompactPickerChange,
             onOpenOverlaySettings = { context.startActivity(viewModel.overlaySettingsIntent()) },
@@ -147,9 +162,11 @@ fun SettingsRoute(viewModel: SettingsViewModel = hiltViewModel()) {
 private fun SettingsRootScreen(
     state: SettingsUiState,
     onOpen: (SettingsScreen) -> Unit,
+    onBack: () -> Unit,
 ) {
-    // Back out of Settings itself belongs to whoever navigated here, so the root has no arrow.
-    SettingsScaffold(title = "Settings", onBack = null) { padding ->
+    // Settings is a full-screen push off the Home header now, not a tab, so its root carries the
+    // arrow back out — there is no bottom bar underneath to leave by.
+    SettingsScaffold(title = "Settings", onBack = onBack) { padding ->
         Column(
             Modifier
                 .fillMaxSize()

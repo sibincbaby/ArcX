@@ -3,7 +3,9 @@ package com.arcx.integration.entrypoints.accessibility
 import com.arcx.core.common.di.IoDispatcher
 import com.arcx.core.domain.capture.ScreenContextProvider
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -52,6 +54,31 @@ internal class AccessibilityScreenContextProvider @Inject constructor(
      */
     override suspend fun screenshot(): ByteArray? =
         AccessibilityServiceHolder.current()?.latestScreenImage()
+
+    /**
+     * Suspends until the frame has been encoded, not merely grabbed. [captureScreenImage] reports
+     * those separately because the bubble wants its panel back the instant the pixels are off the
+     * display — but a caller that is about to *send* the picture has to wait for the JPEG, or it
+     * reads the previous frame out from under itself.
+     */
+    override suspend fun captureScreenshotNow(): ByteArray? {
+        val service = AccessibilityServiceHolder.current() ?: return null
+        if (!service.canScreenshot()) return null
+        return suspendCancellableCoroutine { continuation ->
+            var resumed = false
+            service.captureScreenImage(
+                onGrabbed = {},
+                onEncoded = { jpeg ->
+                    // The platform makes no promise about calling back exactly once, and resuming
+                    // a continuation twice throws.
+                    if (!resumed) {
+                        resumed = true
+                        continuation.resume(jpeg)
+                    }
+                },
+            )
+        }
+    }
 
     override suspend fun replaceFocusedText(text: String): Boolean = withContext(io) {
         AccessibilityServiceHolder.current()?.setFocusedText(text) ?: false

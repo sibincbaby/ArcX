@@ -1,9 +1,13 @@
 package com.arcx.feature.history
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -40,7 +44,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,16 +59,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcx.core.designsystem.component.EmptyState
 import com.arcx.core.designsystem.component.ErrorCard
 import com.arcx.core.designsystem.component.MarkdownText
-import com.arcx.core.designsystem.component.SectionHeader
+import com.arcx.core.designsystem.component.SectionLabel
 import com.arcx.core.designsystem.component.WorkflowIcon
+import com.arcx.core.designsystem.theme.MetaTextStyle
+import com.arcx.core.designsystem.theme.warningTint
 import com.arcx.core.model.RunRecord
 import com.arcx.core.model.RunStatus
+import com.arcx.core.model.RunSummary
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-
-private val CardShape = RoundedCornerShape(20.dp)
 
 @Composable
 fun HistoryRoute(
@@ -79,9 +83,16 @@ fun HistoryRoute(
         onClearHistory = viewModel::onClearHistory,
         onEnableHistory = viewModel::onEnableHistory,
         onCopy = viewModel::onCopy,
+        onOpenRun = viewModel::onOpenRun,
+        onCloseRun = viewModel::onCloseRun,
     )
 }
 
+/**
+ * What ArcX has actually been doing. Three numbers for today at the top, then every run
+ * newest first — the numbers are what tells you something has changed, and the list is where
+ * you find out which run it was.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HistoryScreen(
@@ -90,52 +101,35 @@ private fun HistoryScreen(
     onClearHistory: () -> Unit,
     onEnableHistory: () -> Unit,
     onCopy: (String) -> Unit,
+    onOpenRun: (String) -> Unit,
+    onCloseRun: () -> Unit,
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
-    var detail by remember { mutableStateOf<RunRecord?>(null) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("History") },
-                actions = {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(Icons.Outlined.MoreVert, contentDescription = "More")
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Clear history") },
-                            enabled = state.days.isNotEmpty(),
-                            onClick = {
-                                menuOpen = false
-                                confirmClear = true
-                            },
-                        )
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    Scaffold { padding ->
         when {
             // Being switched off is a different situation from having nothing to show, and
             // saying so beats an empty list that looks like a bug.
-            !state.historyEnabled -> EmptyState(
-                icon = Icons.Outlined.History,
-                title = "History is off",
-                body = "ArcX is not recording runs. You can turn it back on here, or any " +
-                    "time under Settings › Privacy.",
-                modifier = Modifier.padding(padding),
-                actionLabel = "Turn history on",
-                onAction = onEnableHistory,
-            )
+            !state.historyEnabled -> Column(Modifier.padding(padding)) {
+                Title(canClear = false, onClear = {})
+                EmptyState(
+                    icon = Icons.Outlined.History,
+                    title = "History is off",
+                    body = "ArcX is not recording runs. You can turn it back on here, or any " +
+                        "time under Settings › Privacy.",
+                    actionLabel = "Turn history on",
+                    onAction = onEnableHistory,
+                )
+            }
 
-            !state.loading && state.days.isEmpty() -> EmptyState(
-                icon = Icons.Outlined.History,
-                title = "Nothing here yet",
-                body = "Runs you fire from anywhere on your phone show up here, newest first.",
-                modifier = Modifier.padding(padding),
-            )
+            !state.loading && state.days.isEmpty() -> Column(Modifier.padding(padding)) {
+                Title(canClear = false, onClear = {})
+                EmptyState(
+                    icon = Icons.Outlined.History,
+                    title = "Nothing here yet",
+                    body = "Runs you fire from anywhere on your phone show up here, newest first.",
+                )
+            }
 
             else -> LazyColumn(
                 modifier = Modifier
@@ -143,14 +137,29 @@ private fun HistoryScreen(
                     .padding(padding),
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
+                item(key = "title") {
+                    Title(canClear = true, onClear = { confirmClear = true })
+                }
+                item(key = "stats") { StatRow(state.stats) }
+
+                // itemsIndexed, not a forEach of item{} calls. Each item{} is its own interval
+                // in the lazy layout, so a thousand runs built a thousand intervals — rebuilt
+                // whenever this lambda re-ran. One interval per day is the same list for a
+                // fraction of the bookkeeping.
                 state.days.forEach { day ->
-                    item(key = "day-${day.label}") { SectionHeader(day.label) }
-                    items(day.runs, key = { it.id }) { run ->
+                    item(key = "day-${day.label}") { SectionLabel(day.label) }
+                    itemsIndexed(day.runs, key = { _, run -> run.id }) { index, run ->
+                        // No animateItem here, unlike the library and the gallery: those are
+                        // filtered and sorted, so their rows genuinely move. Runs are only ever
+                        // prepended, so all this bought was a fade on the new top row — paid for
+                        // on every frame of the one list in the app long enough to really
+                        // scroll. Measured at roughly a millisecond a frame, which is close to
+                        // this device's noise floor, but it is work with nothing to show for it.
                         RunRow(
                             run = run,
                             nowMillis = state.nowMillis,
-                            onClick = { detail = run },
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            showDivider = index < day.runs.lastIndex,
+                            onClick = { onOpenRun(run.id) },
                         )
                     }
                 }
@@ -175,39 +184,128 @@ private fun HistoryScreen(
         )
     }
 
-    detail?.let { run ->
+    state.detail?.let { run ->
         RunDetailSheet(
             run = run,
-            onDismiss = { detail = null },
+            onDismiss = onCloseRun,
             onCopy = onCopy,
             onRunAgain = {
-                detail = null
+                onCloseRun()
                 onRunWorkflow(run.workflowId)
             },
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Title(canClear: Boolean, onClear: () -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 8.dp, top = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Activity",
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Box {
+            IconButton(onClick = { menuOpen = true }) {
+                Icon(
+                    imageVector = Icons.Outlined.MoreVert,
+                    contentDescription = "More",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("Clear history") },
+                    enabled = canClear,
+                    onClick = {
+                        menuOpen = false
+                        onClear()
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatRow(stats: RunStats) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
+    ) {
+        StatTile(value = stats.runsToday.toString(), label = "runs today")
+        StatTile(
+            value = if (stats.medianMs == 0L) "—" else formatDuration(stats.medianMs),
+            label = "median",
+        )
+        StatTile(
+            value = stats.failedToday.toString(),
+            label = "failed",
+            // Only shouts when there is something to shout about; a zero in amber is noise.
+            accent = warningTint().content.takeIf { stats.failedToday > 0 },
+        )
+    }
+}
+
+@Composable
+private fun RowScope.StatTile(value: String, label: String, accent: Color? = null) {
+    Column(
+        modifier = Modifier
+            .weight(1f)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(16.dp))
+            .padding(13.dp),
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleLarge,
+            color = accent ?: MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 @Composable
 private fun RunRow(
-    run: RunRecord,
+    run: RunSummary,
     nowMillis: Long,
+    showDivider: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = CardShape,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        onClick = onClick,
-    ) {
+    val failed = run.status == RunStatus.FAILED
+    val warning = warningTint()
+
+    Column(modifier.padding(horizontal = 20.dp)) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .clickable(onClick = onClick),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            WorkflowIcon(run.workflowIcon)
-            Spacer(Modifier.width(14.dp))
+            WorkflowIcon(
+                icon = run.workflowIcon,
+                size = 36.dp,
+                container = if (failed) {
+                    warning.container
+                } else {
+                    MaterialTheme.colorScheme.secondaryContainer
+                },
+            )
+            Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     text = run.workflowName,
@@ -216,32 +314,49 @@ private fun RunRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "${relativeTime(run.startedAt, nowMillis)} · ${formatDuration(run.durationMs)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = "${run.providerLabel} · ${run.model}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // An icon, not a thumbnail: the list must never decode a screen capture per row.
+                    if (run.hasScreenshot) {
+                        Icon(
+                            imageVector = Icons.Outlined.Image,
+                            contentDescription = "Ran on a screenshot",
+                            modifier = Modifier
+                                .padding(end = 5.dp)
+                                .size(13.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        text = "${relativeTime(run.startedAt, nowMillis)} · ${runDetail(run)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (failed) warning.content else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-            // An icon, not a thumbnail: the list must never decode a screen capture per row.
-            if (run.screenshotPath != null) {
-                Icon(
-                    imageVector = Icons.Outlined.Image,
-                    contentDescription = "Ran on a screenshot",
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            // A failure's duration says nothing useful, so the row spends that space on why.
+            if (!failed) {
+                Text(
+                    text = formatDuration(run.durationMs),
+                    style = MetaTextStyle,
+                    color = MaterialTheme.colorScheme.outline,
                 )
                 Spacer(Modifier.width(10.dp))
             }
             StatusIcon(run.status)
         }
+        if (showDivider) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHigh)
+        }
     }
+}
+
+private fun runDetail(run: RunSummary): String = when (run.status) {
+    // Already reduced to one line by the mapper; the list has room for a reason, not a trace.
+    RunStatus.FAILED -> run.error.orEmpty().ifBlank { "failed" }
+
+    else -> run.model.ifBlank { run.providerLabel }.ifBlank { "no provider" }
 }
 
 @Composable
@@ -253,7 +368,7 @@ private fun StatusIcon(status: RunStatus, modifier: Modifier = Modifier) {
             RunStatus.CANCELLED -> Icons.Outlined.Cancel
         },
         contentDescription = statusLabel(status),
-        modifier = modifier.size(20.dp),
+        modifier = modifier.size(18.dp),
         tint = statusColor(status),
     )
 }
@@ -274,7 +389,7 @@ private fun RunDetailSheet(
                 .padding(bottom = 32.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                WorkflowIcon(run.workflowIcon)
+                WorkflowIcon(icon = run.workflowIcon)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(run.workflowName, style = MaterialTheme.typography.titleMedium)
@@ -290,8 +405,8 @@ private fun RunDetailSheet(
             Spacer(Modifier.height(12.dp))
             Text(
                 text = "${absoluteTime(run.startedAt)} · ${run.providerLabel} · ${run.model}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MetaTextStyle,
+                color = MaterialTheme.colorScheme.outline,
             )
 
             // Above the input preview because for these runs the picture *is* what was sent;
@@ -351,7 +466,7 @@ private fun RunDetailSheet(
 @Composable
 private fun statusColor(status: RunStatus): Color = when (status) {
     RunStatus.SUCCESS -> MaterialTheme.colorScheme.primary
-    RunStatus.FAILED -> MaterialTheme.colorScheme.error
+    RunStatus.FAILED -> warningTint().content
     RunStatus.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 

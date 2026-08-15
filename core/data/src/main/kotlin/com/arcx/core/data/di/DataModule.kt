@@ -8,6 +8,7 @@ import androidx.room.Room
 import com.arcx.core.data.clipboard.ClipboardAccessImpl
 import com.arcx.core.data.database.ArcxDatabase
 import com.arcx.core.data.database.MIGRATION_1_2
+import com.arcx.core.data.database.MIGRATION_2_3
 import com.arcx.core.data.database.ProviderDao
 import com.arcx.core.data.database.RunDao
 import com.arcx.core.data.database.WorkflowDao
@@ -42,7 +43,7 @@ internal object DataProvidesModule {
     @Singleton
     fun database(@ApplicationContext context: Context): ArcxDatabase =
         Room.databaseBuilder(context, ArcxDatabase::class.java, ArcxDatabase.NAME)
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
 
     @Provides

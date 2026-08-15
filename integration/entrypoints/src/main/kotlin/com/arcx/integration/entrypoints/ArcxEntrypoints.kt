@@ -13,6 +13,7 @@ import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.glance.appwidget.updateAll
 import com.arcx.core.domain.capture.SystemSurfaces
+import com.arcx.integration.entrypoints.accessibility.AccessibilityServiceHolder
 import com.arcx.integration.entrypoints.accessibility.ArcxAccessibility
 import com.arcx.integration.entrypoints.overlay.OverlayPermission
 import com.arcx.integration.entrypoints.overlay.OverlayService
@@ -36,6 +37,12 @@ class ArcxEntrypoints @Inject constructor(
 
     /** True when the user has switched ArcX on in Settings > Accessibility. */
     override fun isScreenReadingEnabled(): Boolean = ArcxAccessibility.isEnabled(context)
+
+    /**
+     * Read from the bound instance rather than from the setting: this is the only way to catch
+     * the state where Android still lists ArcX but nothing is actually running behind it.
+     */
+    override fun isScreenReadingRunning(): Boolean = AccessibilityServiceHolder.isConnected
 
     override fun screenReadingSettingsIntent(): Intent = ArcxAccessibility.settingsIntent()
 

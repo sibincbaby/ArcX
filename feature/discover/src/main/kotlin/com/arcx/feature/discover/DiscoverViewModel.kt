@@ -33,6 +33,12 @@ internal data class DiscoverUiState(
     /** Everything in the bundled gallery, before filtering. */
     val gallery: List<WorkflowSpec> = emptyList(),
     val galleryError: String? = null,
+    /**
+     * Names already in the library, so a row can say "Added" instead of offering an install
+     * that would quietly make a second copy. Matched by name because an installed workflow is
+     * a copy with its own id — there is nothing else linking it back to the gallery entry.
+     */
+    val installedNames: Set<String> = emptySet(),
     val selected: WorkflowSpec? = null,
     val busy: Boolean = false,
     val message: String? = null,
@@ -46,7 +52,27 @@ internal data class DiscoverUiState(
                         spec.prompt.contains(query, ignoreCase = true)
                     )
         }
+
+    /**
+     * The gallery's opening picks — the first few entries the user has not already taken. It
+     * empties itself as they install things, which is the point: a "start here" shelf that
+     * still says start here after twenty workflows is furniture.
+     */
+    val startHere: List<WorkflowSpec>
+        get() = if (query.isNotBlank() || category != null) {
+            emptyList()
+        } else {
+            gallery.filterNot { it.name in installedNames }.take(START_HERE_COUNT)
+        }
+
+    /** Only the categories the bundled gallery actually contains, with their sizes. */
+    val categoryCounts: List<Pair<WorkflowCategory, Int>>
+        get() = WorkflowCategory.entries
+            .map { it to gallery.count { spec -> spec.category == it } }
+            .filter { it.second > 0 }
 }
+
+private const val START_HERE_COUNT = 3
 
 @HiltViewModel
 internal class DiscoverViewModel @Inject constructor(
@@ -59,7 +85,12 @@ internal class DiscoverViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DiscoverUiState())
     val uiState: StateFlow<DiscoverUiState> = _uiState.asStateFlow()
 
-    /** Emits the id of a freshly installed workflow so the screen can open it. */
+    /**
+     * Emits the id of a freshly installed workflow so the screen can open it — only from the
+     * detail sheet, where the user has read the prompt and is plausibly about to change it.
+     * The list's own Install button stays put and flips to "Added": being thrown into the
+     * editor after tapping a button in a list is not what that button looked like it did.
+     */
     private val installs = Channel<String>(Channel.BUFFERED)
     val installed: Flow<String> = installs.receiveAsFlow()
 
@@ -80,6 +111,13 @@ internal class DiscoverViewModel @Inject constructor(
                 )
             }
         }
+        viewModelScope.launch {
+            workflows.observeAll().collect { library ->
+                _uiState.update { state ->
+                    state.copy(installedNames = library.mapTo(mutableSetOf()) { it.name })
+                }
+            }
+        }
     }
 
     fun setQuery(value: String) = _uiState.update { it.copy(query = value) }
@@ -92,7 +130,7 @@ internal class DiscoverViewModel @Inject constructor(
 
     fun dismissMessage() = _uiState.update { it.copy(message = null) }
 
-    fun install(spec: WorkflowSpec) {
+    fun install(spec: WorkflowSpec, openEditor: Boolean = false) {
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true) }
             val saved = runCatching { saveWorkflow(spec.toWorkflow()) }
@@ -107,7 +145,7 @@ internal class DiscoverViewModel @Inject constructor(
                     },
                 )
             }
-            saved.getOrNull()?.let { installs.send(it.id) }
+            if (openEditor) saved.getOrNull()?.let { installs.send(it.id) }
         }
     }
 

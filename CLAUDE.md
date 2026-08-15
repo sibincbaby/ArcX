@@ -10,6 +10,11 @@ state. Nothing about the product may quietly break that.
 Deeper background — the original PRD, what was built vs. dropped, and every non-obvious decision with
 its evidence — is in `docs/architecture.md`. Read it before any structural change.
 
+- `docs/screen-access.md` — the accessibility/screenshot permission model, the capability matrix,
+  and an **open design decision**. Read it before touching anything to do with screen capture,
+  `{{screen_text}}`, or the accessibility service.
+- `docs/benchmarking.md` — how to measure startup and frame timing, and the current baseline.
+
 ---
 
 ## Commands
@@ -22,6 +27,15 @@ adb logcat -d | grep -E "arcx|AndroidRuntime"
 ```
 
 There is **no lint or ktlint task wired up**. Do not claim one was run.
+
+```bash
+./gradlew :benchmark:connectedBenchmarkAndroidTest   # startup + frame timing, on device
+```
+
+**That task uninstalls ArcX when it finishes**, taking the database, the preferences and the
+Keystore-backed API key with it. `docs/benchmarking.md` has the way to run it without that, and
+the baseline numbers to compare against. Do not trust a `dumpsys gfxinfo` number over a
+macrobenchmark one — gfxinfo has no warm-up and measured ±25% run to run on an identical build.
 
 ## Verifying on a device
 
@@ -46,6 +60,13 @@ first, and confirm the outcome with `topResumedActivity` rather than assuming th
 
 **`am force-stop com.arcx.app` revokes the accessibility service** on Samsung and Xiaomi. If a test
 suddenly shows screen reading as broken, check `enabled_accessibility_services` before debugging code.
+This is not a small trap — it cost hours in one session, presenting as "the permission is granted
+but nothing works". Do not force-stop while testing anything that touches the service.
+
+**A sideload cannot be granted accessibility until restricted settings are allowed.** `installDebug`
+leaves `installerPackageName=null`, so Android 13+ silently refuses the Accessibility toggle until
+App info → ⋮ → Allow restricted settings — and that resets on **every reinstall**. Check with
+`adb shell appops get com.arcx.app ACCESS_RESTRICTED_SETTINGS`.
 
 ---
 
@@ -94,16 +115,72 @@ Traps that have already cost time:
 `arcx://run/{id}` URI and the component-name constant in `ArcxDeepLinks`, resolved by the manifest
 merger at install time. Do not "fix" this into a class reference.
 
-`:feature:settings` talks to system surfaces through the `SystemSurfaces` port in `:core:domain`,
-implemented by `ArcxEntrypoints`. Add new system-permission state there, not by adding a module
-dependency.
+`:feature:settings` and `:feature:home` talk to system surfaces through the `SystemSurfaces` port in
+`:core:domain`, implemented by `ArcxEntrypoints`. Add new system-permission state there, not by
+adding a module dependency. Both re-read it on resume — none of it emits on change.
+
+The bottom bar is **four tabs**: Home · Library · Discover · Activity. Settings is a full-screen
+push off the Home header, not a tab; `arcx://` deep links go to `RunnerActivity`, never to a tab,
+so tab routes are free to be renamed.
+
+**Motion lives in `Motion.kt`** (`:core:designsystem`), and `ArcxNavHost` picks between its two
+kinds by asking whether both ends of the move are tabs. Do not fall back to navigation-compose's
+defaults — they are a single 700ms crossfade for every destination, which measured ~500ms of
+visible ghosting on device and made a push look identical to a tab switch.
 
 ---
+
+## History has to stay bounded
+
+The runs table is the only thing in ArcX that grows with use, and two of the most-visited screens
+read it. Measured on device, going from 13 to 5,000 runs tripled every frame-time percentile while
+scrolling Activity and pushed the tab-switch 99th from 85ms to 150ms.
+
+Three rules keep that from coming back, all of them easy to undo by accident:
+
+1. **`HistoryRepository` has no "give me everything" method, on purpose.** Every read is bounded —
+   by row count, by timestamp, or by being a SQL aggregate. Do not add `observeAll()`.
+2. **Lists take `RunSummary`, not `RunRecord`.** The two preview columns are most of a row's bytes
+   and no list draws them; the detail sheet fetches the full record by id.
+3. **`RunRecord.HISTORY_LIMIT` is enforced on insert**, and pruning deletes the dropped rows'
+   screenshots in the same breath — see `HistoryRepositoryImpl.prune`. Rows without their images is
+   the leak `ScreenshotStore` warns about.
+
+ViewModel folds over any of this belong on `flowOn(defaultDispatcher)`. `stateIn(viewModelScope)`
+collects on `Main.immediate`, so without it a `combine {}` transform is UI-thread work — that is
+what turned a row count into dropped frames rather than just memory.
+
+## Compose stability
+
+`:core:model` is pure Kotlin and is not compiled with the Compose plugin, so the compiler has no
+stability information for anything in it. Left alone it assumes the worst, and that cascades:
+`Workflow` unstable makes `HomeTile` unstable, which under strong skipping means every tile in the
+grid is compared by *instance* against an object the ViewModel just reallocated — so every tile and
+every history row recomposed on every keystroke and every completed run.
+
+`compose-stability.conf` at the repo root declares those types stable, and both Compose convention
+plugins wire it in. **It is a promise, not a hint** — everything in `:core:model` must stay a data
+class of primitives, Strings and enums with `val` properties. Break that and Compose will silently
+miss updates.
+
+To check the effect of any change here:
+
+```bash
+./gradlew assembleDebug -Pcompose.reports --rerun-tasks
+# then read <module>/build/compose-reports/<module>-composables.txt
+```
+
+A composable parameter that reads `unstable` there is one that recomposes whenever its owner
+re-emits, whether or not the value changed.
 
 ## The one execution path
 
 Every entry point ends in `ExecuteWorkflowUseCase`. Provider resolution, variable expansion,
 history and error mapping exist exactly once. **Do not add a second path.**
+
+`ExecuteWorkflowUseCase` resolves **only the placeholders the prompt actually names**. Two of them
+cost real time — `{{clipboard}}` is an IPC, `{{screen_text}}` is an accessibility snapshot — and
+resolving the full set on every run put both between the user's tap and the first token.
 
 `RunnerActivity` is the single Activity entry point. It uses **standard launch mode on purpose** —
 `ACTION_PROCESS_TEXT` returns its replacement via `setResult`, which only reaches the caller when the
@@ -120,6 +197,11 @@ Activity runs in the caller's task. `singleTask` breaks text replacement.
 - **Discover is local only** — a bundled `gallery.json` plus `.arcx.json` import/export. There is no
   community backend, no ratings, no search. That was deferred, not forgotten.
 - 16 starter workflows in `core/data/src/main/assets/starter_workflows.json`.
+- **`Workflow.icon` is an icon key, not an emoji** — one of `WorkflowIcons` in `:core:designsystem`,
+  drawn as a Material vector and tinted by category. Anything not in that list is still drawn as
+  text, which is how a user's own emoji survives; `MIGRATION_2_3` rewrote only the emoji ArcX
+  itself shipped. Shortcuts and the widget cannot compose, so `WorkflowIconBitmap` rasterises the
+  same vector for them.
 - Release builds are **unsigned**. No signing config exists.
 - No monetization code of any kind.
 

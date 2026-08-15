@@ -3,7 +3,7 @@
   "workflows": [
     {
       "name": "Rewrite Professionally",
-      "icon": "💼",
+      "icon": "edit_note",
       "category": "WRITING",
       "input": "SELECTED_TEXT",
       "output": "REPLACE_SELECTION",
@@ -16,7 +16,7 @@
     },
     {
       "name": "Fix Grammar",
-      "icon": "✅",
+      "icon": "spellcheck",
       "category": "WRITING",
       "input": "SELECTED_TEXT",
       "output": "REPLACE_SELECTION",
@@ -29,7 +29,7 @@
     },
     {
       "name": "Make Shorter",
-      "icon": "✂️",
+      "icon": "content_cut",
       "category": "WRITING",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -40,7 +40,7 @@
     },
     {
       "name": "Expand",
-      "icon": "📝",
+      "icon": "expand",
       "category": "WRITING",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -51,7 +51,7 @@
     },
     {
       "name": "Explain Code",
-      "icon": "💻",
+      "icon": "code",
       "category": "DEVELOPMENT",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -63,7 +63,7 @@
     },
     {
       "name": "Review Code",
-      "icon": "🔍",
+      "icon": "search",
       "category": "DEVELOPMENT",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -75,7 +75,7 @@
     },
     {
       "name": "Generate Tests",
-      "icon": "🧪",
+      "icon": "science",
       "category": "DEVELOPMENT",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -86,7 +86,7 @@
     },
     {
       "name": "Explain Error",
-      "icon": "🐞",
+      "icon": "bug_report",
       "category": "DEVELOPMENT",
       "input": "CLIPBOARD",
       "output": "BOTTOM_SHEET",
@@ -98,7 +98,7 @@
     },
     {
       "name": "Summarize Chapter",
-      "icon": "📚",
+      "icon": "menu_book",
       "category": "EDUCATION",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -110,7 +110,7 @@
     },
     {
       "name": "Flashcards",
-      "icon": "🃏",
+      "icon": "school",
       "category": "EDUCATION",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -121,7 +121,7 @@
     },
     {
       "name": "MCQs",
-      "icon": "❓",
+      "icon": "quiz",
       "category": "EDUCATION",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -132,7 +132,7 @@
     },
     {
       "name": "Notes",
-      "icon": "🗒️",
+      "icon": "notes",
       "category": "EDUCATION",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -143,7 +143,7 @@
     },
     {
       "name": "Bullet Summary",
-      "icon": "📌",
+      "icon": "format_list_bulleted",
       "category": "RESEARCH",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -155,7 +155,7 @@
     },
     {
       "name": "Fact Check",
-      "icon": "🕵️",
+      "icon": "fact_check",
       "category": "RESEARCH",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -167,7 +167,7 @@
     },
     {
       "name": "Extract Key Points",
-      "icon": "🔑",
+      "icon": "key",
       "category": "RESEARCH",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -178,7 +178,7 @@
     },
     {
       "name": "Explain This Screen",
-      "icon": "👀",
+      "icon": "visibility",
       "category": "PRODUCTIVITY",
       "input": "SCREENSHOT",
       "output": "BOTTOM_SHEET",

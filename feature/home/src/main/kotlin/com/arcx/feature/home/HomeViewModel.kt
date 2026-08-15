@@ -2,115 +2,219 @@ package com.arcx.feature.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.arcx.core.common.di.DefaultDispatcher
 import com.arcx.core.common.time.TimeSource
+import com.arcx.core.domain.capture.SystemSurfaces
+import com.arcx.core.domain.repository.HistoryRepository
+import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.domain.repository.WorkflowRepository
-import com.arcx.core.domain.usecase.ToggleFavoriteUseCase
-import com.arcx.core.domain.usecase.TogglePinnedUseCase
+import com.arcx.core.model.RunOutcome
+import com.arcx.core.model.RunSummary
 import com.arcx.core.model.Workflow
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import javax.inject.Inject
 
 private const val STOP_TIMEOUT_MS = 5_000L
 
-/**
- * Below this many runs the user has barely started, so built-ins they have not touched are more
- * useful than a screen that is mostly whitespace. Above it, Home belongs to what they use.
- */
-private const val SUGGEST_UNTIL_RUNS = 4
-private const val MAX_SUGGESTIONS = 4
+/** Two full rows of three, plus the "add" cell. Beyond that the grid stops being scannable. */
+private const val MAX_TILES = 8
+
+/** Enough to answer "what did I just do", not enough to become a second Activity screen. */
+private const val MAX_RECENT_RUNS = 3
+
+/** A workflow as the grid draws it: the thing itself, plus what it usually costs to run. */
+data class HomeTile(
+    val workflow: Workflow,
+    /** Mean duration of its successful runs, or null when it has never finished one. */
+    val averageMs: Long?,
+)
+
+/** What a launch surface is currently doing, in the three states a chip can honestly report. */
+enum class SurfaceState { LIVE, ALWAYS_ON, OFF }
+
+data class SurfaceChip(val label: String, val state: SurfaceState)
 
 /**
- * Home is four slices of the same library, so every section is derived from the repository
- * rather than held separately: whatever the user pins, favourites or runs shows up here on the
- * next emission without Home having to be told it happened.
+ * Home is the library's fast path plus a live report on the ways into it.
+ *
+ * The surface strip is the part that is not cosmetic: a bubble that Android stopped, or screen
+ * reading that an OEM revoked while ArcX was in the background, used to be invisible until the
+ * user went looking in Settings for why a workflow had gone quiet. Saying it on the first screen
+ * is the whole point, which is also why [onResume] re-reads the permissions rather than
+ * observing them — none of them emit anything when they change.
  */
 data class HomeUiState(
     val greeting: String = "",
+    val subtitle: String = "",
     val query: String = "",
-    val pinned: List<Workflow> = emptyList(),
-    val favorites: List<Workflow> = emptyList(),
-    val recent: List<Workflow> = emptyList(),
-    val suggestions: List<Workflow> = emptyList(),
+    val tiles: List<HomeTile> = emptyList(),
+    val recentRuns: List<RunSummary> = emptyList(),
+    val surfaces: List<SurfaceChip> = emptyList(),
+    /** Pinned at emission so every row's "9m ago" is measured against the same instant. */
+    val nowMillis: Long = 0L,
     /** Separates "you have nothing yet" from "nothing matches what you typed". */
     val libraryIsEmpty: Boolean = false,
     val loading: Boolean = true,
 ) {
-    val hasVisibleSections: Boolean
-        get() = pinned.isNotEmpty() ||
-            favorites.isNotEmpty() ||
-            recent.isNotEmpty() ||
-            suggestions.isNotEmpty()
+    val searching: Boolean get() = query.isNotBlank()
 }
+
+/** What history contributes to Home, combined once so the outer flow stays inside combine's arity. */
+private data class Activity(
+    val recent: List<RunSummary>,
+    val averages: Map<String, Long>,
+    val today: List<RunOutcome>,
+)
+
+/** The four slices of the library, combined once so the outer flow stays inside combine's arity. */
+private data class Library(
+    val all: List<Workflow>,
+    val pinned: List<Workflow>,
+    val favorites: List<Workflow>,
+    val recent: List<Workflow>,
+)
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val workflows: WorkflowRepository,
-    private val toggleFavorite: ToggleFavoriteUseCase,
-    private val togglePinned: TogglePinnedUseCase,
-    time: TimeSource,
+    workflows: WorkflowRepository,
+    history: HistoryRepository,
+    settings: SettingsRepository,
+    private val surfaces: SystemSurfaces,
+    private val time: TimeSource,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
+    private val permissions = MutableStateFlow(Permissions())
 
     // Fixed for the lifetime of the screen; re-deriving it on every emission would let the
     // greeting flip mid-scroll as the clock crosses noon.
     private val greeting = greetingFor(time.nowMillis())
 
-    val uiState: StateFlow<HomeUiState> = combine(
+    // Likewise fixed: the query is bounded by this instant, and a screen open across midnight
+    // showing yesterday's count until it is reopened is better than re-querying on every tick.
+    private val startOfToday = startOfDay(time.nowMillis())
+
+    private val library = combine(
         workflows.observeAll(),
         workflows.observePinned(),
         workflows.observeFavorites(),
         workflows.observeRecent(),
+        ::Library,
+    )
+
+    /**
+     * Three bounded reads instead of one unbounded one. Home used to collect every run ever
+     * recorded to show three of them and a mean — the mean is now a SQL aggregate, the count is
+     * a day's worth of rows, and the list asks for exactly the three it draws.
+     */
+    private val activity = combine(
+        history.observeRecent(MAX_RECENT_RUNS),
+        history.observeAverageDurations(),
+        history.observeSince(startOfToday),
+        ::Activity,
+    )
+
+    val uiState: StateFlow<HomeUiState> = combine(
+        library,
+        activity,
+        settings.settings,
+        permissions,
         query,
-    ) { all, pinned, favorites, recent, text ->
+    ) { shelf, runs, user, granted, text ->
         HomeUiState(
             greeting = greeting,
+            subtitle = subtitleFor(shelf.all.size, runs.today.size),
             query = text,
-            pinned = pinned.matching(text),
-            favorites = favorites.matching(text),
-            recent = recent.matching(text),
-            suggestions = suggestionsFrom(all, recent).matching(text),
-            libraryIsEmpty = all.isEmpty(),
+            tiles = tileOrder(shelf).matching(text).take(MAX_TILES)
+                .map { HomeTile(it, runs.averages[it.id]) },
+            // Runs are the answer to "what did I just do", which a search over workflow names
+            // is not; hide them rather than filter them into something meaningless.
+            recentRuns = if (text.isBlank()) runs.recent else emptyList(),
+            surfaces = surfaceChips(user.bubbleEnabled, granted),
+            nowMillis = time.nowMillis(),
+            libraryIsEmpty = shelf.all.isEmpty(),
             loading = false,
         )
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
-        initialValue = HomeUiState(greeting = greeting),
-    )
+    }
+        // Off the main thread. `stateIn(viewModelScope)` collects on Main.immediate, so before
+        // this every fold above ran on the UI thread — which is how a row count turned into
+        // dropped frames rather than just memory.
+        .flowOn(defaultDispatcher)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+            initialValue = HomeUiState(greeting = greeting),
+        )
+
+    /**
+     * Called on every resume. Overlay and accessibility can both be taken away in system
+     * Settings while ArcX is in the background, and a strip that still says "Bubble on" after
+     * that is worse than no strip at all.
+     */
+    fun onResume() {
+        permissions.value = Permissions(
+            overlayGranted = surfaces.isOverlayGranted(),
+            screenReadingLive = surfaces.isScreenReadingEnabled() && surfaces.isScreenReadingRunning(),
+        )
+    }
 
     fun onQueryChange(text: String) {
         query.value = text
     }
 
-    fun onToggleFavorite(workflow: Workflow) {
-        viewModelScope.launch { toggleFavorite(workflow) }
-    }
+    private data class Permissions(
+        val overlayGranted: Boolean = false,
+        /** Switched on *and* bound. A service Android lists but is not hosting is not live. */
+        val screenReadingLive: Boolean = false,
+    )
 
-    fun onTogglePinned(workflow: Workflow) {
-        viewModelScope.launch { togglePinned(workflow) }
-    }
+    private fun surfaceChips(bubbleEnabled: Boolean, granted: Permissions) = listOf(
+        SurfaceChip(
+            label = if (bubbleEnabled && granted.overlayGranted) "Bubble on" else "Bubble off",
+            state = if (bubbleEnabled && granted.overlayGranted) SurfaceState.LIVE else SurfaceState.OFF,
+        ),
+        // Both are declared in the manifest and cannot be switched off, so they never warn.
+        SurfaceChip("Share", SurfaceState.ALWAYS_ON),
+        SurfaceChip("Selection", SurfaceState.ALWAYS_ON),
+        SurfaceChip(
+            label = if (granted.screenReadingLive) "Screen text" else "Screen text off",
+            state = if (granted.screenReadingLive) SurfaceState.LIVE else SurfaceState.OFF,
+        ),
+    )
+}
+
+private fun subtitleFor(workflowCount: Int, runsToday: Int): String {
+    val workflows = "$workflowCount ${if (workflowCount == 1) "workflow" else "workflows"}"
+    return "$workflows · $runsToday ${if (runsToday == 1) "run" else "runs"} today"
 }
 
 /**
- * Built-ins the user has never run — the only kind of suggestion ArcX can honestly make, since
- * there is no server watching behaviour. "Suggested" here means "bundled and still unused".
+ * Pinned first, then favourites, then whatever was run most recently, then the rest of the
+ * library in its own order — so the grid fills up even on a fresh install, and settles into
+ * what the user actually uses without ever being told to.
  */
-private fun suggestionsFrom(all: List<Workflow>, recent: List<Workflow>): List<Workflow> {
-    if (recent.size >= SUGGEST_UNTIL_RUNS) return emptyList()
-    val alreadySurfaced = recent.mapTo(mutableSetOf()) { it.id }
-    return all
-        .filter { it.isBuiltIn && it.id !in alreadySurfaced && !it.isPinned && !it.isFavorite }
-        .sortedBy { it.sortOrder }
-        .take(MAX_SUGGESTIONS)
+private fun tileOrder(shelf: Library): List<Workflow> =
+    (shelf.pinned + shelf.favorites + shelf.recent + shelf.all.sortedBy { it.sortOrder })
+        .distinctBy { it.id }
+
+/**
+ * Local calendar midnight, not "twenty-four hours ago" — "runs today" has to reset at midnight
+ * or the number means nothing to the person reading it.
+ */
+internal fun startOfDay(nowMillis: Long): Long {
+    val zone = ZoneId.systemDefault()
+    return Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate().atStartOfDay(zone)
+        .toInstant().toEpochMilli()
 }
 
 private fun List<Workflow>.matching(query: String): List<Workflow> {

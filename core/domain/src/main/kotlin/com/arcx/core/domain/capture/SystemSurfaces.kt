@@ -13,6 +13,18 @@ import android.content.Intent
 interface SystemSurfaces {
     /** Whether the accessibility service is enabled, which is what `{{screen_text}}` needs. */
     fun isScreenReadingEnabled(): Boolean
+
+    /**
+     * Whether the service is not merely switched on but actually bound and running.
+     *
+     * These come apart, and when they do the user is stranded: several OEMs kill the process
+     * without clearing the setting, so Android keeps reporting the service as enabled while
+     * nothing is listening. Screen reading and screenshots then fail with the app insisting the
+     * permission is granted — which it is. The remedy is to toggle it off and on, and nothing can
+     * suggest that unless it can tell the two apart.
+     */
+    fun isScreenReadingRunning(): Boolean
+
     fun screenReadingSettingsIntent(): Intent
 
     /** Whether SYSTEM_ALERT_WINDOW is granted, which the floating bubble needs. */

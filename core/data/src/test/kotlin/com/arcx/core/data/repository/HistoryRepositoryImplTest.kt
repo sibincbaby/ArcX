@@ -2,6 +2,9 @@ package com.arcx.core.data.repository
 
 import com.arcx.core.data.database.RunDao
 import com.arcx.core.data.database.RunEntity
+import com.arcx.core.data.database.RunOutcomeRow
+import com.arcx.core.data.database.RunSummaryRow
+import com.arcx.core.data.database.WorkflowAverageRow
 import com.arcx.core.data.database.WorkflowDao
 import com.arcx.core.data.database.WorkflowEntity
 import com.arcx.core.data.screenshot.ScreenshotStoreImpl
@@ -13,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -59,12 +63,41 @@ class HistoryRepositoryImplTest {
         assertFalse(File(orphan).exists())
     }
 
-    private fun run(id: String, screenshotPath: String?) = RunRecord(
+    /**
+     * The cap is what keeps every history read bounded, and dropping rows without their images
+     * is the same privacy leak as clearing without them — except this one happens silently, in
+     * the background, on the thousand-and-first run.
+     */
+    @Test
+    fun `passing the retention cap drops the oldest run and its screenshot`() = runTest {
+        val doomed = screenshots.save("oldest", byteArrayOf(1))!!
+        val repository = repository()
+        repository.record(run(id = "oldest", screenshotPath = doomed, startedAt = 1L))
+
+        repeat(RunRecord.HISTORY_LIMIT) { index ->
+            repository.record(run(id = "r$index", screenshotPath = null, startedAt = index + 2L))
+        }
+
+        assertEquals(RunRecord.HISTORY_LIMIT, runDao.rows.size)
+        assertFalse(runDao.rows.any { it.id == "oldest" })
+        assertFalse(File(doomed).exists())
+    }
+
+    /** Under the cap nothing is touched — the delete has to be a no-op, not a slow no-op. */
+    @Test
+    fun `staying under the cap keeps every run`() = runTest {
+        val repository = repository()
+        repeat(5) { repository.record(run(id = "r$it", screenshotPath = null, startedAt = it.toLong())) }
+
+        assertEquals(5, runDao.rows.size)
+    }
+
+    private fun run(id: String, screenshotPath: String?, startedAt: Long = 1L) = RunRecord(
         id = id,
         workflowId = "w1",
         workflowName = "Explain this screen",
         workflowIcon = "✨",
-        startedAt = 1L,
+        startedAt = startedAt,
         durationMs = 2L,
         providerLabel = "Gemini",
         model = "gemini-3-pro",
@@ -74,16 +107,58 @@ class HistoryRepositoryImplTest {
     )
 }
 
+/** Reproduces the DAO's ordering and cap semantics so the repository's use of them is real. */
 private class FakeRunDao : RunDao {
     val rows = mutableListOf<RunEntity>()
 
-    override fun observeAll(): Flow<List<RunEntity>> = MutableStateFlow(rows.toList())
+    override fun observeRecent(limit: Int): Flow<List<RunSummaryRow>> =
+        MutableStateFlow(newestFirst().take(limit).map { it.toSummaryRow() })
+
+    override fun observeSince(since: Long): Flow<List<RunOutcomeRow>> =
+        MutableStateFlow(
+            rows.filter { it.startedAt >= since }.map { RunOutcomeRow(it.durationMs, it.status) },
+        )
+
+    override fun observeAverageDurations(status: RunStatus): Flow<List<WorkflowAverageRow>> =
+        MutableStateFlow(
+            rows.filter { it.status == status }
+                .groupBy { it.workflowId }
+                .map { (id, runs) -> WorkflowAverageRow(id, runs.map { it.durationMs }.average()) },
+        )
+
     override suspend fun get(id: String): RunEntity? = rows.firstOrNull { it.id == id }
+
     override suspend fun insert(run: RunEntity) {
         rows += run
     }
 
+    override suspend fun prune(keep: Int) {
+        val survivors = newestFirst().take(keep).mapTo(mutableSetOf()) { it.id }
+        rows.retainAll { it.id in survivors }
+    }
+
+    override suspend fun screenshotsBeyond(keep: Int): List<String> {
+        val survivors = newestFirst().take(keep).mapTo(mutableSetOf()) { it.id }
+        return rows.filter { it.id !in survivors }.mapNotNull { it.screenshotPath }
+    }
+
     override suspend fun clear() = rows.clear()
+
+    private fun newestFirst() = rows.sortedByDescending { it.startedAt }
+
+    private fun RunEntity.toSummaryRow() = RunSummaryRow(
+        id = id,
+        workflowId = workflowId,
+        workflowName = workflowName,
+        workflowIcon = workflowIcon,
+        startedAt = startedAt,
+        durationMs = durationMs,
+        providerLabel = providerLabel,
+        model = model,
+        status = status,
+        error = error,
+        hasScreenshot = screenshotPath != null,
+    )
 }
 
 /** Only [touchLastRun] is on the path under test; the rest would be noise if it were called. */

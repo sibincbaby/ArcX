@@ -1,7 +1,9 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 
 package com.arcx.feature.workflow
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,9 +15,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -30,23 +35,22 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.SearchOff
+import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,19 +60,25 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.arcx.core.designsystem.component.CountPill
 import com.arcx.core.designsystem.component.EmptyState
+import com.arcx.core.designsystem.component.SectionLabel
+import com.arcx.core.designsystem.component.WiringChips
 import com.arcx.core.designsystem.component.WorkflowIcon
+import com.arcx.core.designsystem.component.shortLabel
+import com.arcx.core.designsystem.theme.tint
 import com.arcx.core.model.Workflow
 import com.arcx.core.model.WorkflowCategory
 
 /**
- * The user's library. Everything they have built or installed, searchable, filterable, and
- * one tap from running.
+ * The user's library. Everything they have built or installed, searchable, filterable, and one
+ * tap from running — long press to configure, the same two gestures as every other surface.
  *
  * [onPinToHomeScreen] is a hook for the launcher shortcut, which needs a `ShortcutManager` and
  * an Activity — neither of which belongs in a feature module. It fires only when the workflow
@@ -95,6 +105,7 @@ fun WorkflowListRoute(
         modifier = modifier,
         onQueryChange = viewModel::setQuery,
         onCategoryChange = viewModel::setCategory,
+        onSortChange = viewModel::setSort,
         onClearFilters = viewModel::clearFilters,
         onRun = { onRunWorkflow(it.id) },
         onEdit = { onEditWorkflow(it.id) },
@@ -114,6 +125,7 @@ private fun WorkflowListScreen(
     state: WorkflowListUiState,
     onQueryChange: (String) -> Unit,
     onCategoryChange: (WorkflowCategory?) -> Unit,
+    onSortChange: (LibrarySort) -> Unit,
     onClearFilters: () -> Unit,
     onRun: (Workflow) -> Unit,
     onEdit: (Workflow) -> Unit,
@@ -128,73 +140,77 @@ private fun WorkflowListScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { TopAppBar(title = { Text("Workflows") }) },
         floatingActionButton = {
             FloatingActionButton(onClick = onCreate) {
                 Icon(Icons.Filled.Add, contentDescription = "New workflow")
             }
         },
     ) { padding ->
-        Column(Modifier.padding(padding)) {
-            OutlinedTextField(
-                value = state.query,
-                onValueChange = onQueryChange,
-                singleLine = true,
-                placeholder = { Text("Search workflows") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (state.query.isNotEmpty()) {
-                        IconButton(onClick = { onQueryChange("") }) {
-                            Icon(Icons.Outlined.Close, contentDescription = "Clear search")
-                        }
-                    }
-                },
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+        LazyColumn(
+            modifier = Modifier.padding(padding),
+            contentPadding = PaddingValues(bottom = 96.dp),
+        ) {
+            item(key = "title") {
+                Text(
+                    text = "Library",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp),
+                )
+            }
 
-            CategoryFilters(
-                selected = state.category,
-                onSelect = onCategoryChange,
-            )
+            item(key = "search") {
+                SearchField(
+                    query = state.query,
+                    // Null, not 0, until the library has actually been read. With the old
+                    // half-second crossfade nobody saw the first frames of this screen; now
+                    // that it arrives promptly, "Search 0 workflows" is on screen long enough
+                    // to read, and a confident wrong number is worse than no number.
+                    total = state.total.takeIf { !state.loading },
+                    onQueryChange = onQueryChange,
+                )
+            }
+
+            item(key = "filters") {
+                FilterRow(
+                    state = state,
+                    onCategoryChange = onCategoryChange,
+                    onSortChange = onSortChange,
+                )
+            }
 
             when {
-                state.loading -> Spacer(Modifier.fillMaxSize())
+                state.loading -> Unit
 
-                state.workflows.isEmpty() && state.libraryIsEmpty -> EmptyState(
-                    icon = Icons.Outlined.AutoAwesome,
-                    title = "No workflows yet",
-                    body = "Build an AI action once — a name, a prompt, where the text comes from — then fire it from anywhere.",
-                    actionLabel = "Create one",
-                    onAction = onCreate,
-                )
-
-                state.workflows.isEmpty() -> EmptyState(
-                    icon = Icons.Outlined.SearchOff,
-                    title = "Nothing here",
-                    body = "No workflow matches that. Try another category, or a different word.",
-                    actionLabel = "Clear filters",
-                    onAction = onClearFilters,
-                )
-
-                else -> LazyColumn(
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(state.workflows, key = { it.id }) { workflow ->
-                        WorkflowRow(
-                            workflow = workflow,
-                            onRun = { onRun(workflow) },
-                            onEdit = { onEdit(workflow) },
-                            onToggleFavorite = { onToggleFavorite(workflow) },
-                            onDuplicate = { onDuplicate(workflow) },
-                            onTogglePin = { onTogglePin(workflow) },
-                            onDelete = { pendingDelete = workflow },
-                        )
-                    }
+                state.libraryIsEmpty -> item(key = "empty") {
+                    EmptyState(
+                        icon = Icons.Outlined.AutoAwesome,
+                        title = "No workflows yet",
+                        body = "Build an AI action once — a name, a prompt, where the text comes " +
+                            "from — then fire it from anywhere.",
+                        actionLabel = "Create one",
+                        onAction = onCreate,
+                    )
                 }
+
+                state.isEmpty -> item(key = "no-matches") {
+                    EmptyState(
+                        icon = Icons.Outlined.SearchOff,
+                        title = "Nothing here",
+                        body = "No workflow matches that. Try another category, or a different word.",
+                        actionLabel = "Clear filters",
+                        onAction = onClearFilters,
+                    )
+                }
+
+                else -> librarySections(
+                    sections = state.sections,
+                    onRun = onRun,
+                    onEdit = onEdit,
+                    onToggleFavorite = onToggleFavorite,
+                    onDuplicate = onDuplicate,
+                    onTogglePin = onTogglePin,
+                    onDelete = { pendingDelete = it },
+                )
             }
         }
     }
@@ -219,97 +235,210 @@ private fun WorkflowListScreen(
     }
 }
 
-@Composable
-private fun CategoryFilters(
-    selected: WorkflowCategory?,
-    onSelect: (WorkflowCategory?) -> Unit,
-    modifier: Modifier = Modifier,
+private fun LazyListScope.librarySections(
+    sections: List<LibrarySection>,
+    onRun: (Workflow) -> Unit,
+    onEdit: (Workflow) -> Unit,
+    onToggleFavorite: (Workflow) -> Unit,
+    onDuplicate: (Workflow) -> Unit,
+    onTogglePin: (Workflow) -> Unit,
+    onDelete: (Workflow) -> Unit,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        FilterChip(
-            selected = selected == null,
-            onClick = { onSelect(null) },
-            label = { Text("All") },
-        )
-        WorkflowCategory.entries.forEach { category ->
-            FilterChip(
-                selected = selected == category,
-                onClick = { onSelect(if (selected == category) null else category) },
-                label = { Text(category.label) },
+    sections.forEach { section ->
+        section.title?.let { title ->
+            item(key = "section-$title") { SectionLabel(title) }
+        }
+        itemsIndexed(
+            items = section.workflows,
+            key = { _, workflow -> "${section.title}-${workflow.id}" },
+        ) { index, workflow ->
+            WorkflowRow(
+                // Starring a workflow moves it between sections; without this the row
+                // teleports and the eye has to find it again.
+                modifier = Modifier.animateItem(),
+                workflow = workflow,
+                showDivider = index < section.workflows.lastIndex,
+                onRun = { onRun(workflow) },
+                onConfigure = { onEdit(workflow) },
+                onToggleFavorite = { onToggleFavorite(workflow) },
+                onDuplicate = { onDuplicate(workflow) },
+                onTogglePin = { onTogglePin(workflow) },
+                onDelete = { onDelete(workflow) },
             )
         }
     }
 }
 
 @Composable
+private fun SearchField(query: String, total: Int?, onQueryChange: (String) -> Unit) {
+    TextField(
+        value = query,
+        onValueChange = onQueryChange,
+        singleLine = true,
+        placeholder = {
+            Text(
+                when (total) {
+                    null -> "Search workflows"
+                    1 -> "Search 1 workflow"
+                    else -> "Search $total workflows"
+                },
+            )
+        },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(Icons.Outlined.Close, contentDescription = "Clear search")
+                }
+            }
+        },
+        shape = RoundedCornerShape(14.dp),
+        colors = TextFieldDefaults.colors(
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            disabledIndicatorColor = Color.Transparent,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+    )
+}
+
+/** Counts on the pills so "is there anything under Dev" is answered before the tap. */
+@Composable
+private fun FilterRow(
+    state: WorkflowListUiState,
+    onCategoryChange: (WorkflowCategory?) -> Unit,
+    onSortChange: (LibrarySort) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CountPill(
+            label = "All",
+            count = state.total.takeIf { !state.loading },
+            selected = state.category == null,
+            onClick = { onCategoryChange(null) },
+        )
+        state.counts.forEach { entry ->
+            CountPill(
+                label = entry.label,
+                count = entry.count,
+                selected = state.category == entry.category,
+                onClick = {
+                    onCategoryChange(entry.category.takeIf { it != state.category })
+                },
+            )
+        }
+        SortButton(sort = state.sort, onSortChange = onSortChange)
+    }
+}
+
+@Composable
+private fun SortButton(sort: LibrarySort, onSortChange: (LibrarySort) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp)) {
+            Icon(
+                imageVector = Icons.Outlined.Sort,
+                contentDescription = "Sort — currently ${sort.label}",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            LibrarySort.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.label) },
+                    trailingIcon = {
+                        if (option == sort) {
+                            Icon(Icons.Filled.Star, contentDescription = "Selected", Modifier.size(14.dp))
+                        }
+                    },
+                    onClick = {
+                        open = false
+                        onSortChange(option)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun WorkflowRow(
+    modifier: Modifier = Modifier,
     workflow: Workflow,
+    showDivider: Boolean,
     onRun: () -> Unit,
-    onEdit: () -> Unit,
+    onConfigure: () -> Unit,
     onToggleFavorite: () -> Unit,
     onDuplicate: () -> Unit,
     onTogglePin: () -> Unit,
     onDelete: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
-    Card(
-        onClick = onRun,
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        modifier = modifier.fillMaxWidth(),
-    ) {
+    Column(modifier.padding(horizontal = 20.dp)) {
         Row(
-            modifier = Modifier.padding(start = 14.dp, top = 12.dp, end = 4.dp, bottom = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .combinedClickable(onClick = onRun, onLongClick = onConfigure),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val tint = workflow.category.tint()
             WorkflowIcon(
-                emoji = workflow.icon,
-                container = MaterialTheme.colorScheme.surface,
+                icon = workflow.icon,
+                size = 38.dp,
+                container = tint.container,
+                content = tint.content,
             )
-            Column(
-                Modifier
-                    .weight(1f)
-                    .padding(horizontal = 14.dp),
-            ) {
+            Spacer(Modifier.width(13.dp))
+            Column(Modifier.weight(1f)) {
                 Text(
                     text = workflow.name,
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = workflowSubtitle(workflow.category, workflow.input, workflow.output),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Spacer(Modifier.height(4.dp))
+                WiringChips(
+                    input = workflow.input.shortLabel,
+                    output = workflow.output.shortLabel,
                 )
             }
 
-            IconButton(onClick = onToggleFavorite) {
+            IconButton(onClick = onToggleFavorite, modifier = Modifier.size(36.dp)) {
                 Icon(
                     imageVector = if (workflow.isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                    contentDescription = if (workflow.isFavorite) "Remove from favourites" else "Add to favourites",
+                    contentDescription = if (workflow.isFavorite) {
+                        "Remove from favourites"
+                    } else {
+                        "Add to favourites"
+                    },
+                    modifier = Modifier.size(19.dp),
                     tint = if (workflow.isFavorite) {
                         MaterialTheme.colorScheme.primary
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        MaterialTheme.colorScheme.outline
                     },
                 )
             }
 
             Box {
-                IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "More options",
+                        modifier = Modifier.size(19.dp),
+                        tint = MaterialTheme.colorScheme.outline,
+                    )
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     MenuRow("Run", Icons.Outlined.PlayArrow) { menuOpen = false; onRun() }
@@ -322,7 +451,7 @@ private fun WorkflowRow(
                             onDuplicate()
                         }
                     } else {
-                        MenuRow("Edit", Icons.Outlined.Edit) { menuOpen = false; onEdit() }
+                        MenuRow("Edit", Icons.Outlined.Edit) { menuOpen = false; onConfigure() }
                         MenuRow("Duplicate", Icons.Outlined.ContentCopy) {
                             menuOpen = false
                             onDuplicate()
@@ -339,6 +468,9 @@ private fun WorkflowRow(
                     }
                 }
             }
+        }
+        if (showDivider) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHigh)
         }
     }
 }

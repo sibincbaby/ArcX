@@ -3,7 +3,7 @@
   "workflows": [
     {
       "name": "Translate to English",
-      "icon": "🌍",
+      "icon": "translate",
       "category": "TRANSLATION",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -14,7 +14,7 @@
     },
     {
       "name": "Meeting Notes to Action Items",
-      "icon": "✅",
+      "icon": "task_alt",
       "category": "BUSINESS",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -25,7 +25,7 @@
     },
     {
       "name": "Rewrite as a Tweet",
-      "icon": "🐦",
+      "icon": "tag",
       "category": "WRITING",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -36,7 +36,7 @@
     },
     {
       "name": "SQL from a Description",
-      "icon": "🗄️",
+      "icon": "storage",
       "category": "DEVELOPMENT",
       "input": "MANUAL",
       "output": "BOTTOM_SHEET",
@@ -47,7 +47,7 @@
     },
     {
       "name": "Regex Explainer",
-      "icon": "🔤",
+      "icon": "data_object",
       "category": "DEVELOPMENT",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -57,7 +57,7 @@
     },
     {
       "name": "Commit Message from a Diff",
-      "icon": "🔀",
+      "icon": "merge",
       "category": "DEVELOPMENT",
       "input": "CLIPBOARD",
       "output": "CLIPBOARD",
@@ -68,7 +68,7 @@
     },
     {
       "name": "Recipe Scaler",
-      "icon": "🍳",
+      "icon": "restaurant",
       "category": "PRODUCTIVITY",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -78,7 +78,7 @@
     },
     {
       "name": "Email Reply Draft",
-      "icon": "✉️",
+      "icon": "mail",
       "category": "BUSINESS",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -89,7 +89,7 @@
     },
     {
       "name": "Study Plan",
-      "icon": "📅",
+      "icon": "event",
       "category": "EDUCATION",
       "input": "MANUAL",
       "output": "BOTTOM_SHEET",
@@ -100,7 +100,7 @@
     },
     {
       "name": "Simplify Legal Text",
-      "icon": "⚖️",
+      "icon": "gavel",
       "category": "RESEARCH",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",
@@ -111,7 +111,7 @@
     },
     {
       "name": "JSON to Kotlin data class",
-      "icon": "🧩",
+      "icon": "extension",
       "category": "DEVELOPMENT",
       "input": "CLIPBOARD",
       "output": "CLIPBOARD",
@@ -122,7 +122,7 @@
     },
     {
       "name": "Interview Question Generator",
-      "icon": "🎤",
+      "icon": "forum",
       "category": "BUSINESS",
       "input": "SELECTED_TEXT",
       "output": "BOTTOM_SHEET",

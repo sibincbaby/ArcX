@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Merged only into the `benchmark` build type.
+
+  Macrobenchmark needs to sample the app from outside its process, and the app is deliberately not
+  debuggable in this build type — a debuggable build disables ART optimisations and would measure
+  something nobody ships. `profileable` is the release-safe way to allow that sampling, and keeping
+  it in this source set means it can never reach a real release by accident.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <profileable
+            android:shell="true"
+            tools:targetApi="q" />
+    </application>
+</manifest>

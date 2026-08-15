@@ -18,6 +18,7 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             defaultConfig.testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
             buildFeatures.compose = true
         }
+        configureCompose()
 
         dependencies {
             addComposeDependencies(this@with)

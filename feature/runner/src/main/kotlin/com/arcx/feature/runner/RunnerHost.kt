@@ -11,6 +11,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -135,11 +137,33 @@ fun RunnerHost(
                 },
                 onShare = { context.shareText(workflow.name, text) },
                 onDone = { close(RunnerOutcome()) },
+                // Offered whenever the source was editable. For a REPLACE_SELECTION workflow
+                // the applier has already done it and closed, so this is really for the ones
+                // that show a sheet: the answer can still go back where the text came from.
+                onReplace = if (request.input.isReplaceable && text.isNotEmpty()) {
+                    { close(RunnerOutcome(replacementText = text)) }
+                } else {
+                    null
+                },
             )
         }
     }
 
-    if (compact == null) {
+    if (state.capturing) {
+        // Draw nothing at all — not a transparent sheet, nothing. takeScreenshot photographs the
+        // composited display, so a scrim or a card still on screen would be in the picture the
+        // model is asked about. The window itself is already transparent with no dim, so what is
+        // left is the app the user came from.
+        LaunchedEffect(Unit) {
+            // Two frames, then a settle: the first is the recomposition that removes the sheet,
+            // the second is the one that reaches the compositor. The delay covers the display
+            // pipeline, the same reason the bubble waits after hiding its handle.
+            withFrameNanos {}
+            withFrameNanos {}
+            delay(CAPTURE_SETTLE_MS)
+            viewModel.onWindowBlank()
+        }
+    } else if (compact == null) {
         // Waiting on the preference. One empty frame, and the host Activity is transparent.
     } else if (asDialog) {
         Dialog(
@@ -172,3 +196,6 @@ fun RunnerHost(
         }
     }
 }
+
+/** Time for a blanked window to actually leave the display before the shutter. */
+private const val CAPTURE_SETTLE_MS = 90L

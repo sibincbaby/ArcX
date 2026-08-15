@@ -8,26 +8,40 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Accessibility
 import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.BatteryAlert
+import androidx.compose.material.icons.outlined.BatteryStd
 import androidx.compose.material.icons.outlined.CloseFullscreen
 import androidx.compose.material.icons.outlined.Dashboard
-import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.TouchApp
+import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.PictureInPictureAlt
+import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.TouchApp
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,21 +49,29 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import com.arcx.core.designsystem.R as DesignSystemR
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
-import androidx.compose.material.icons.outlined.BatteryStd
-import androidx.compose.material.icons.outlined.RestartAlt
-import com.arcx.core.designsystem.component.SectionHeader
+import com.arcx.core.designsystem.R as DesignSystemR
+import com.arcx.core.designsystem.component.SectionLabel
+import com.arcx.core.designsystem.component.TintedIcon
+import com.arcx.core.designsystem.theme.MetaTextStyle
+import com.arcx.core.designsystem.theme.warningTint
 
 /**
- * Everything that lets ArcX be used from outside its own window. All three permissions here can
- * be revoked in system Settings while ArcX is backgrounded, so each one is read fresh on resume
- * rather than remembered from when the screen was built.
+ * Everything that lets ArcX be used from outside its own window, led by how many of them are
+ * actually working right now.
+ *
+ * The count at the top is the point of the screen. Three of these can be revoked in system
+ * Settings while ArcX is backgrounded and two more are switches the user forgot they never
+ * turned on, so the honest answer to "why did nothing happen when I selected that text" is
+ * usually visible here and nowhere else. Every permission is read fresh on resume rather than
+ * remembered from when the screen was built.
  */
 @Composable
 internal fun EntryPointsScreen(
@@ -60,8 +82,11 @@ internal fun EntryPointsScreen(
     onOpenBatterySettings: () -> Unit,
     onOpenAutostart: () -> Unit,
     screenReadingEnabled: Boolean,
+    screenReadingRunning: Boolean,
     launcherIconEnabled: Boolean,
     accessibilityButtonAssigned: Boolean,
+    accessibilityButtonOffered: Boolean,
+    onAccessibilityButtonOfferedChange: (Boolean) -> Unit,
     canAddQuickTile: Boolean,
     bubbleOpensFullList: Boolean,
     compactPicker: Boolean,
@@ -93,6 +118,22 @@ internal fun EntryPointsScreen(
         onPauseOrDispose { }
     }
 
+    val bubbleLive = bubbleEnabled && overlayGranted
+    // The six ArcX can actually answer for. The Quick Settings tile is deliberately not among
+    // them: Android exposes no way to ask whether a tile has been added to the shade, and a
+    // guess in this count would make the whole number worthless.
+    // Counts running, not merely switched on: a service Android lists but is not hosting is not
+    // a way in, however the setting reads.
+    val screenReadingLive = screenReadingEnabled && screenReadingRunning
+    val live = listOf(
+        bubbleLive,
+        true, // text selection menu — a manifest activity, always present
+        true, // share sheet — likewise
+        launcherIconEnabled,
+        accessibilityButtonAssigned && accessibilityButtonOffered,
+        screenReadingLive,
+    ).count { it }
+
     SettingsScaffold(title = "Entry points", onBack = onBack) { padding ->
         Column(
             Modifier
@@ -100,17 +141,100 @@ internal fun EntryPointsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
-            SectionHeader("Floating bubble")
+            Text(
+                text = "$live of 6 are live",
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp),
+            )
+            Text(
+                text = "Each one funnels into the same runner, so a workflow behaves identically " +
+                    "wherever you fire it.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp),
+            )
+
+            Spacer(Modifier.height(18.dp))
             SettingsGroup {
-                SettingsSwitchRow(
-                    title = "Floating bubble",
-                    subtitle = "A draggable button that floats over any app and opens your " +
-                        "workflows without leaving it.",
+                SurfaceRow(
                     icon = Icons.Outlined.PictureInPictureAlt,
-                    checked = bubbleEnabled && overlayGranted,
-                    onCheckedChange = onBubbleEnabledChange,
-                )
+                    title = "Floating bubble",
+                    subtitle = "Draggable, floats over any app",
+                    live = bubbleLive,
+                ) {
+                    Switch(
+                        checked = bubbleLive,
+                        onCheckedChange = onBubbleEnabledChange,
+                    )
+                }
+                SurfaceRow(
+                    icon = Icons.Outlined.TextFields,
+                    title = "Text selection menu",
+                    subtitle = "ArcX in the highlight popup",
+                    live = true,
+                ) { BuiltInBadge() }
+                SurfaceRow(
+                    icon = Icons.Outlined.Share,
+                    title = "Share sheet",
+                    subtitle = "Always available",
+                    live = true,
+                ) { BuiltInBadge() }
+                SurfaceRow(
+                    icon = Icons.Outlined.Apps,
+                    title = "App drawer icon",
+                    subtitle = "\"ArcX Actions\" — drop it on a home screen or an Edge panel",
+                    live = launcherIconEnabled,
+                ) {
+                    Switch(
+                        checked = launcherIconEnabled,
+                        onCheckedChange = onLauncherIconChange,
+                    )
+                }
+                SurfaceRow(
+                    icon = Icons.Outlined.TouchApp,
+                    title = "Accessibility button",
+                    subtitle = when {
+                        !screenReadingEnabled ->
+                            "Needs the accessibility permission first"
+                        !accessibilityButtonOffered ->
+                            "Off. Turn this on to let ArcX be one of the things the " +
+                                "accessibility button and the volume-key shortcut can open."
+                        accessibilityButtonAssigned ->
+                            "Assigned — opens your workflows from inside any app, and it is the " +
+                                "one trigger besides the bubble that can photograph the screen"
+                        else ->
+                            "Offered. Pick ArcX under the accessibility button in system Settings " +
+                                "to finish."
+                    },
+                    live = accessibilityButtonAssigned && accessibilityButtonOffered,
+                ) {
+                    if (screenReadingEnabled) {
+                        Switch(
+                            checked = accessibilityButtonOffered,
+                            onCheckedChange = onAccessibilityButtonOfferedChange,
+                        )
+                    }
+                }
+                SurfaceRow(
+                    icon = Icons.Outlined.Visibility,
+                    title = "Screen reading",
+                    subtitle = when {
+                        screenReadingLive -> "Workflows can read and photograph what is on screen"
+                        // Switched on but nothing behind it. Say the remedy, because Android's own
+                        // Accessibility screen will keep insisting this is enabled.
+                        screenReadingEnabled ->
+                            "Switched on, but not running — Android stopped it. Turn it off and " +
+                                "on again in Accessibility settings."
+                        else -> "Workflows that need screen text will ask for other input"
+                    },
+                    live = screenReadingLive,
+                ) {
+                    TextButton(onClick = onOpenScreenReadingSettings) {
+                        Text(if (screenReadingEnabled) "Manage" else "Enable")
+                    }
+                }
             }
+
             if (!overlayGranted) {
                 PermissionPrompt(
                     body = "Drawing over other apps is off, so the bubble has nowhere to " +
@@ -120,11 +244,47 @@ internal fun EntryPointsScreen(
                 )
             }
 
+            SettingsGroup {
+                SurfaceRow(
+                    icon = Icons.Outlined.Dashboard,
+                    title = "Quick Settings tile",
+                    subtitle = if (canAddQuickTile) {
+                        "Sits with Wi-Fi and Bluetooth, so you can open your workflows from any " +
+                            "screen — even the lock screen. Android will not tell us whether you " +
+                            "have added it, so it is not in the count above."
+                    } else {
+                        "Swipe down twice, tap Edit, and drag the ArcX tile in. It then works " +
+                            "from any screen, even the lock screen."
+                    },
+                    live = null,
+                ) {
+                    if (canAddQuickTile) {
+                        TextButton(onClick = onAddQuickTile) { Text("Add") }
+                    }
+                }
+            }
+            SettingsNote(
+                "One more way in needs no setup at all: hold down the ArcX icon and pick " +
+                    "\"Actions\".",
+            )
+
             // Clearing ArcX from Recents kills its process, and Android does not restart the
             // service afterwards on the OEMs that police background starts — the bubble is simply
             // gone until the app is opened again. These two settings are the only levers a user
             // has, so say what they are for rather than listing permissions.
-            SectionHeader("Keeping the bubble running")
+            Spacer(Modifier.height(8.dp))
+            WarningCard(
+                title = "Keeping the bubble alive",
+                body = if (hasAutostartScreen) {
+                    "Clearing ArcX from Recents stops the bubble, and your phone will not bring " +
+                        "it back on its own. Autostart is what allows it to return; locking ArcX " +
+                        "in Recents stops it being cleared in the first place. Opening ArcX, or " +
+                        "using it from the share or selection menu, always brings it back."
+                } else {
+                    "Clearing ArcX from Recents stops the bubble until you open ArcX again, or " +
+                        "use it from the share or selection menu."
+                },
+            )
             SettingsGroup {
                 SettingsRow(
                     title = "Battery optimisation",
@@ -151,56 +311,8 @@ internal fun EntryPointsScreen(
                     )
                 }
             }
-            SettingsNote(
-                if (hasAutostartScreen) {
-                    "If you clear ArcX from Recents the bubble disappears, and your phone will " +
-                        "not bring it back on its own. Turning on Autostart is what allows it to " +
-                        "return; locking ArcX in Recents stops it being cleared in the first " +
-                        "place. Opening ArcX, or using it from the share or selection menu, " +
-                        "always brings the bubble back."
-                } else {
-                    "If you clear ArcX from Recents the bubble disappears until you open ArcX " +
-                        "again, or use it from the share or selection menu."
-                },
-            )
 
-            // The workflow list is a plain Activity, so anything that can point at a launcher
-            // component can open it. The switch is here because that convenience arrives as a
-            // second icon in the app drawer, which not everyone wants.
-            SectionHeader("Quick launch")
-            SettingsGroup {
-                SettingsSwitchRow(
-                    title = "App drawer icon",
-                    subtitle = "Adds an \"ArcX Actions\" icon that opens your workflow list " +
-                        "straight away. Drag it onto a home screen or into an Edge panel, or " +
-                        "point a Routine or a side-key gesture at it.",
-                    icon = Icons.Outlined.Apps,
-                    checked = launcherIconEnabled,
-                    onCheckedChange = onLauncherIconChange,
-                )
-                SettingsRow(
-                    title = "Quick Settings tile",
-                    subtitle = if (canAddQuickTile) {
-                        "Sits with Wi-Fi and Bluetooth, so you can swipe down from any screen — " +
-                            "even the lock screen — and open your workflows."
-                    } else {
-                        "Swipe down twice, tap Edit, and drag the ArcX tile in. It then works " +
-                            "from any screen, even the lock screen."
-                    },
-                    icon = Icons.Outlined.Dashboard,
-                    trailing = {
-                        if (canAddQuickTile) {
-                            TextButton(onClick = onAddQuickTile) { Text("Add") }
-                        }
-                    },
-                )
-            }
-            SettingsNote(
-                "One more way in needs no setup at all: hold down the ArcX icon and pick " +
-                    "\"Actions\".",
-            )
-
-            SectionHeader("Screen reading")
+            SectionLabel("Screen reading")
             // The disclosure sits above the control on purpose: Play's accessibility policy
             // wants it in front of the user before they act, not tucked under the switch.
             Surface(
@@ -239,31 +351,9 @@ internal fun EntryPointsScreen(
                         }
                     },
                 )
-                // Grouped under screen reading rather than with the other launch surfaces because
-                // it is the same service: with screen reading off there is nothing to assign.
-                SettingsRow(
-                    title = "Accessibility button",
-                    subtitle = when {
-                        !screenReadingEnabled ->
-                            "Turn screen reading on first, then ArcX can be assigned to it"
-                        accessibilityButtonAssigned ->
-                            "Assigned — opens your workflows from inside any app"
-                        else ->
-                            "Not assigned. Choose ArcX under Accessibility button to open " +
-                                "workflows without leaving the app you are in."
-                    },
-                    icon = Icons.Outlined.TouchApp,
-                    trailing = {
-                        if (screenReadingEnabled) {
-                            TextButton(onClick = onOpenScreenReadingSettings) {
-                                Text(if (accessibilityButtonAssigned) "Manage" else "Set up")
-                            }
-                        }
-                    },
-                )
             }
 
-            SectionHeader("Notifications")
+            SectionLabel("Notifications")
             SettingsGroup {
                 SettingsRow(
                     title = "Notifications",
@@ -299,7 +389,7 @@ internal fun EntryPointsScreen(
             // bubble. A non-focusable window cannot host a text field, so its panel has no
             // search. Everything else opens a normal Activity and has no such limit. Both of
             // those are defaults, not rules, so both are switchable here.
-            SectionHeader("Workflow list")
+            SectionLabel("Workflow list")
             SettingsGroup {
                 SettingsSwitchRow(
                     title = "Bubble opens the full list",
@@ -320,6 +410,104 @@ internal fun EntryPointsScreen(
                 )
             }
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/**
+ * One way in. [live] null means ArcX genuinely cannot tell — the icon stays neutral rather than
+ * claiming a state, because a wrong green dot here is worse than no dot.
+ */
+@Composable
+private fun SurfaceRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    live: Boolean?,
+    trailing: @Composable () -> Unit,
+) {
+    val tint = if (live == true) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 15.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TintedIcon(
+            icon = icon,
+            container = if (live == true) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHighest
+            },
+            content = tint,
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (live == false) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        trailing()
+    }
+}
+
+@Composable
+private fun BuiltInBadge() {
+    Text(
+        text = "built in",
+        style = MetaTextStyle,
+        color = MaterialTheme.colorScheme.outline,
+        modifier = Modifier.padding(end = 4.dp),
+    )
+}
+
+/** Amber, not red: none of this is broken, it is the platform behaving as designed. */
+@Composable
+private fun WarningCard(title: String, body: String) {
+    val warning = warningTint()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .background(warning.container, CardShape)
+            .border(1.dp, warning.content.copy(alpha = 0.3f), CardShape)
+            .padding(15.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.BatteryAlert,
+            contentDescription = null,
+            tint = warning.content,
+            modifier = Modifier
+                .padding(top = 1.dp)
+                .size(19.dp),
+        )
+        Column {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = warning.content)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

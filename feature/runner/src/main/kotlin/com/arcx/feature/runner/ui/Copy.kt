@@ -1,8 +1,6 @@
 package com.arcx.feature.runner.ui
 
 import com.arcx.core.model.AiError
-import com.arcx.core.model.OutputTarget
-import com.arcx.core.model.WorkflowCategory
 import java.util.Locale
 
 /**
@@ -18,7 +16,8 @@ internal fun AiError.title(): String = when (this) {
     is AiError.ContentBlocked -> "Request was blocked"
     is AiError.NoProvider -> "No provider connected"
     is AiError.NoInput -> "Nothing to work on"
-    is AiError.NoScreenshot -> "Couldn't capture the screen"
+    is AiError.NoScreenshot ->
+        if (captureAvailable) "Nothing to look at" else "Couldn't capture the screen"
     is AiError.Server -> "The provider had a problem"
     is AiError.Unknown -> "Something went wrong"
 }
@@ -37,26 +36,21 @@ internal fun AiError.body(): String = when (this) {
         "Select or copy some text first, then run this workflow again."
 
     is AiError.NoScreenshot ->
-        "Screen capture needs the screen reading permission, on Android 11 or newer. " +
-            "Turn it on in Settings › Entry points."
+        if (captureAvailable) {
+            "ArcX can only photograph the screen from the floating bubble or the accessibility " +
+                "button — those fire while the app you are looking at is still the only thing on " +
+                "screen. Started from anywhere else, the only thing to photograph is ArcX."
+        } else {
+            "Screen capture needs the screen reading permission, on Android 11 or newer. " +
+                "Turn it on in Settings › Entry points."
+        }
 
     is AiError.Server -> "Returned HTTP $code. Trying again usually works."
     is AiError.Unknown -> message ?: "Try again."
 }
 
-internal fun WorkflowCategory.label(): String =
-    name.lowercase(Locale.ROOT).replaceFirstChar { it.titlecase(Locale.getDefault()) }
-
-internal fun OutputTarget.label(): String = when (this) {
-    OutputTarget.POPUP -> "Popup"
-    OutputTarget.BOTTOM_SHEET -> "Sheet"
-    OutputTarget.CLIPBOARD -> "Copy"
-    OutputTarget.REPLACE_SELECTION -> "Replace"
-    OutputTarget.SHARE -> "Share"
-    OutputTarget.SAVE_MARKDOWN -> "Markdown"
-    OutputTarget.SAVE_PDF -> "PDF"
-    OutputTarget.NOTIFICATION -> "Notification"
-}
+// The picker's own short labels for input and output now come from :core:designsystem, beside
+// the WiringChips that draw them, so every surface states a workflow's wiring identically.
 
 internal fun formatDuration(millis: Long): String =
     if (millis < 1_000) "${millis}ms"

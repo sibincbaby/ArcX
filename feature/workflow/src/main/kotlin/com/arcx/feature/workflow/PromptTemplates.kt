@@ -9,7 +9,7 @@ package com.arcx.feature.workflow
  * with a one-shot AI action is a wall of preamble around the answer.
  */
 internal data class PromptTemplateOption(
-    val emoji: String,
+    val icon: String,
     val title: String,
     val summary: String,
     val prompt: String,
@@ -18,7 +18,7 @@ internal data class PromptTemplateOption(
 
 internal val PROMPT_TEMPLATES: List<PromptTemplateOption> = listOf(
     PromptTemplateOption(
-        emoji = "💡",
+        icon = "lightbulb",
         title = "Explain",
         summary = "Break something down for someone seeing it for the first time",
         systemPrompt = "You explain things to a smart person who simply has not met this topic before. You never pad and never condescend.",
@@ -33,7 +33,7 @@ internal val PROMPT_TEMPLATES: List<PromptTemplateOption> = listOf(
         """.trimIndent(),
     ),
     PromptTemplateOption(
-        emoji = "✍️",
+        icon = "edit_note",
         title = "Rewrite",
         summary = "Say the same thing, better",
         systemPrompt = "You are an editor. You rewrite without inflating, and you return only the rewritten text.",
@@ -48,7 +48,7 @@ internal val PROMPT_TEMPLATES: List<PromptTemplateOption> = listOf(
         """.trimIndent(),
     ),
     PromptTemplateOption(
-        emoji = "📄",
+        icon = "description",
         title = "Summarize",
         summary = "The substance, in a fraction of the words",
         prompt = """
@@ -62,7 +62,7 @@ internal val PROMPT_TEMPLATES: List<PromptTemplateOption> = listOf(
         """.trimIndent(),
     ),
     PromptTemplateOption(
-        emoji = "✨",
+        icon = "auto_awesome",
         title = "Improve",
         summary = "Critique, then a stronger version",
         systemPrompt = "You are a candid editor. You name real weaknesses rather than praising work you were asked to improve.",
@@ -78,7 +78,7 @@ internal val PROMPT_TEMPLATES: List<PromptTemplateOption> = listOf(
         """.trimIndent(),
     ),
     PromptTemplateOption(
-        emoji = "🌍",
+        icon = "translate",
         title = "Translate",
         summary = "Into another language, idiomatically",
         systemPrompt = "You are a translator who produces text a native speaker would actually write, not a word-for-word gloss.",
@@ -95,7 +95,7 @@ internal val PROMPT_TEMPLATES: List<PromptTemplateOption> = listOf(
         """.trimIndent(),
     ),
     PromptTemplateOption(
-        emoji = "🧱",
+        icon = "data_object",
         title = "Convert to JSON",
         summary = "Turn loose text into structured data",
         systemPrompt = "You are a data extractor. You return valid JSON and nothing else.",
@@ -110,7 +110,7 @@ internal val PROMPT_TEMPLATES: List<PromptTemplateOption> = listOf(
         """.trimIndent(),
     ),
     PromptTemplateOption(
-        emoji = "❓",
+        icon = "quiz",
         title = "Generate Questions",
         summary = "Questions that test whether you understood it",
         prompt = """
@@ -124,7 +124,7 @@ internal val PROMPT_TEMPLATES: List<PromptTemplateOption> = listOf(
         """.trimIndent(),
     ),
     PromptTemplateOption(
-        emoji = "🔍",
+        icon = "search",
         title = "Review Code",
         summary = "Real problems, worst first",
         systemPrompt = "You are a careful code reviewer. You report real problems, ranked by consequence, and you do not pad a review with nitpicks.",

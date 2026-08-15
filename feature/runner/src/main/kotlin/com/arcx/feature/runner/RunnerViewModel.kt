@@ -3,12 +3,16 @@ package com.arcx.feature.runner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arcx.core.domain.execution.ExecutionState
+import com.arcx.core.domain.capture.ScreenContextProvider
 import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.domain.repository.WorkflowRepository
 import com.arcx.core.domain.usecase.ExecuteWorkflowUseCase
+import com.arcx.core.model.Attachment
+import com.arcx.core.model.InputSource
 import com.arcx.core.model.Workflow
 import com.arcx.core.model.WorkflowInput
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,6 +24,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 /** One group of rows in the picker. */
@@ -40,6 +45,12 @@ data class RunnerUiState(
      * it for the other a frame later.
      */
     val compactPicker: Boolean? = null,
+    /**
+     * True while the window is deliberately drawing nothing so the screen behind it can be
+     * photographed. The host must render no sheet, no dialog and no scrim while this is set —
+     * anything of ArcX's that is still on screen lands in the picture.
+     */
+    val capturing: Boolean = false,
     /** Null while the picker is up; non-null once a workflow is running or has finished. */
     val workflow: Workflow? = null,
     /**
@@ -65,6 +76,7 @@ private data class Catalog(
 class RunnerViewModel @Inject constructor(
     private val workflows: WorkflowRepository,
     private val executeWorkflow: ExecuteWorkflowUseCase,
+    private val screen: ScreenContextProvider,
     settings: SettingsRepository,
 ) : ViewModel() {
 
@@ -72,6 +84,7 @@ class RunnerViewModel @Inject constructor(
     private val runState = MutableStateFlow(RunnerUiState())
 
     private var job: Job? = null
+    private var windowBlank: CompletableDeferred<Unit>? = null
     private var started = false
     private var input = WorkflowInput()
 
@@ -123,10 +136,51 @@ class RunnerViewModel @Inject constructor(
         job?.cancel()
         runState.value = RunnerUiState(workflow = workflow)
         job = viewModelScope.launch {
-            executeWorkflow(workflow, input).collect { state ->
+            val request = withScreenshot(workflow)
+            executeWorkflow(workflow, request).collect { state ->
                 runState.update { it.copy(execution = state) }
             }
         }
+    }
+
+    /**
+     * Photographs the screen behind this window for a vision workflow.
+     *
+     * This is the step that used to exist only inside the bubble, which is why "Explain this
+     * screen" worked from the bubble and nowhere else: every other entry point arrives as an
+     * Activity, and by the time it is running it *is* what is on screen. The window is translucent,
+     * though, so the app the user came from is still being drawn behind it — blanking our own
+     * content is enough to photograph it, exactly as the bubble blanks its handle.
+     *
+     * A launch that brought its own image (a shared photo) is left alone: that is what the user
+     * chose to act on.
+     */
+    private suspend fun withScreenshot(workflow: Workflow): WorkflowInput {
+        if (workflow.input != InputSource.SCREENSHOT) return input
+        if (input.attachments.isNotEmpty()) return input
+        if (!screen.canScreenshot()) return input
+
+        val blank = CompletableDeferred<Unit>()
+        windowBlank = blank
+        runState.update { it.copy(capturing = true) }
+        // Bounded: a host that never reports back must not leave the user staring at an empty
+        // screen. Going ahead without the confirmation risks a picture with our own sheet in it,
+        // which is the lesser of the two failures and still usually correct.
+        withTimeoutOrNull(BLANK_TIMEOUT_MS) { blank.await() }
+
+        val jpeg = screen.captureScreenshotNow()
+        windowBlank = null
+        runState.update { it.copy(capturing = false) }
+
+        // Null means the platform refused — a secure window, or two grabs too close together, the
+        // second of which is the bubble's own capture moments ago. Falling through with no
+        // attachment lets the use case use the frame it already holds.
+        return if (jpeg == null) input else input.copy(attachments = listOf(Attachment(JPEG, jpeg)))
+    }
+
+    /** Called by the host once it has actually stopped drawing. See [withScreenshot]. */
+    fun onWindowBlank() {
+        windowBlank?.complete(Unit)
     }
 
     fun retry() {
@@ -181,3 +235,7 @@ class RunnerViewModel @Inject constructor(
         const val SUBSCRIPTION_GRACE_MS = 5_000L
     }
 }
+
+/** Long enough for a recomposition and a frame, short enough not to read as a hang. */
+private const val BLANK_TIMEOUT_MS = 700L
+private const val JPEG = "image/jpeg"

@@ -26,7 +26,7 @@ data class WorkflowBundle(
 @Serializable
 data class WorkflowSpec(
     val name: String,
-    val icon: String = "✨",
+    val icon: String = "auto_awesome",
     val category: WorkflowCategory = WorkflowCategory.CUSTOM,
     val input: InputSource = InputSource.SELECTED_TEXT,
     val prompt: String,

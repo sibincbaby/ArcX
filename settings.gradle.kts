@@ -40,3 +40,7 @@ include(":feature:settings")
 include(":feature:discover")
 
 include(":integration:entrypoints")
+
+// Frame timing and startup, measured on a real device against a real build. Never a dependency
+// of anything — it is the only module that depends on :app rather than the other way round.
+include(":benchmark")

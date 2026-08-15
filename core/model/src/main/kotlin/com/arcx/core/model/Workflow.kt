@@ -10,8 +10,11 @@ import kotlinx.serialization.Serializable
 data class Workflow(
     val id: String,
     val name: String,
-    /** Emoji shown in pickers, shortcuts and the widget. */
-    val icon: String = "✨",
+    /**
+     * Icon key from the design system's set, shown in pickers, shortcuts and the widget.
+     * Workflows made before that set existed hold an emoji instead, and still render as one.
+     */
+    val icon: String = "auto_awesome",
     val category: WorkflowCategory = WorkflowCategory.CUSTOM,
     val input: InputSource = InputSource.SELECTED_TEXT,
     val prompt: String,

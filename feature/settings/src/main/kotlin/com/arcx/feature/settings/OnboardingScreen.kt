@@ -1,7 +1,8 @@
 package com.arcx.feature.settings
 
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,11 +18,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
@@ -39,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -47,6 +54,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcx.core.designsystem.component.ErrorCard
+import com.arcx.core.designsystem.component.StepBar
+import com.arcx.core.designsystem.component.TintedIcon
+import com.arcx.core.designsystem.theme.MetaTextStyle
 import kotlinx.coroutines.launch
 
 private const val PAGE_COUNT = 4
@@ -72,6 +82,14 @@ fun OnboardingRoute(
                 .fillMaxSize()
                 .padding(padding),
         ) {
+            // Progress at the top rather than dots at the bottom: this is a short sequence with
+            // an end, not a carousel to browse.
+            StepBar(
+                current = pager.currentPage,
+                total = PAGE_COUNT,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp),
+            )
+
             HorizontalPager(
                 state = pager,
                 modifier = Modifier.weight(1f),
@@ -90,8 +108,6 @@ fun OnboardingRoute(
                 }
             }
 
-            PageIndicator(current = pager.currentPage, count = PAGE_COUNT)
-
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -104,7 +120,11 @@ fun OnboardingRoute(
                         // settings all work without a key. Only running a workflow does not.
                         TextButton(onClick = { goTo(3) }) { Text("Skip for now") }
                         Spacer(Modifier.weight(1f))
-                        Button(onClick = { goTo(3) }, enabled = state.connected) { Text("Continue") }
+                        ForwardButton(
+                            label = "Continue",
+                            enabled = state.connected,
+                            onClick = { goTo(3) },
+                        )
                     }
 
                     3 -> {
@@ -112,12 +132,17 @@ fun OnboardingRoute(
                         Button(
                             onClick = { viewModel.onFinish(onDone) },
                             enabled = !state.finishing,
+                            shape = RoundedCornerShape(16.dp),
                         ) { Text("Start using ArcX") }
                     }
 
                     else -> {
                         Spacer(Modifier.weight(1f))
-                        Button(onClick = { goTo(pager.currentPage + 1) }) { Text("Next") }
+                        ForwardButton(
+                            label = "Continue",
+                            enabled = true,
+                            onClick = { goTo(pager.currentPage + 1) },
+                        )
                     }
                 }
             }
@@ -178,6 +203,11 @@ private fun ByokPage() = PageColumn {
     )
 }
 
+/**
+ * BYOK stated as a feature, not as fine print. Where the text goes and where the key lives are
+ * the two questions a stranger's AI app has to answer before anyone pastes a credential into
+ * it, so both are on this screen rather than buried in a privacy policy nobody opens.
+ */
 @Composable
 private fun ConnectPage(
     state: OnboardingUiState,
@@ -187,74 +217,133 @@ private fun ConnectPage(
 ) = PageColumn {
     val uriHandler = LocalUriHandler.current
 
-    Text("Connect a provider", style = MaterialTheme.typography.headlineSmall)
-    Spacer(Modifier.height(8.dp))
+    TintedIcon(
+        icon = Icons.Outlined.Key,
+        container = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+        content = MaterialTheme.colorScheme.primary,
+        size = 52.dp,
+    )
+    Spacer(Modifier.height(18.dp))
+    Text("Bring your own key", style = MaterialTheme.typography.headlineMedium)
+    Spacer(Modifier.height(10.dp))
     Text(
-        "Gemini has a free tier and is the one ArcX supports today. More are on the way.",
-        style = MaterialTheme.typography.bodyMedium,
+        "ArcX has no account and no server of its own. You connect a provider directly, so " +
+            "there is nothing to subscribe to.",
+        style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
     Spacer(Modifier.height(24.dp))
+    OnboardingLabel("Provider")
     Surface(
-        shape = CardShape,
-        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(horizontal = 15.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("◆", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.width(14.dp))
+            TintedIcon(
+                icon = Icons.Outlined.CheckCircle.takeIf { state.connected }
+                    ?: Icons.Outlined.Key,
+                container = MaterialTheme.colorScheme.secondaryContainer,
+                content = MaterialTheme.colorScheme.onSecondaryContainer,
+                size = 34.dp,
+            )
+            Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
                 Text(displayName(state.type), style = MaterialTheme.typography.titleSmall)
                 Text(
-                    defaultModel(state.type),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = defaultModel(state.type),
+                    style = MetaTextStyle,
+                    color = MaterialTheme.colorScheme.outline,
                 )
             }
-            if (state.connected) {
-                Icon(
-                    Icons.Outlined.CheckCircle,
-                    contentDescription = "Connected",
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
+            // Gemini is the only provider with an implementation behind it today, so this is
+            // an honest affordance, not a dropdown that would open onto seven dead ends.
+            Icon(
+                imageVector = Icons.Outlined.UnfoldMore,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                modifier = Modifier.size(19.dp),
+            )
         }
     }
 
-    apiKeyUrl(state.type)?.let { url ->
-        TextButton(onClick = { uriHandler.openUri(url) }) {
-            Text("Get a free key")
-            Spacer(Modifier.width(6.dp))
-            Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
-        }
-    }
-
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(16.dp))
+    OnboardingLabel("API key")
     OutlinedTextField(
         value = state.apiKey,
         onValueChange = onApiKeyChange,
-        label = { Text("API key") },
+        placeholder = { Text("Paste it here") },
         singleLine = true,
+        shape = RoundedCornerShape(16.dp),
         visualTransformation =
             if (state.revealKey) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
-            IconButton(onClick = onToggleReveal) {
-                Icon(
-                    imageVector = if (state.revealKey) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                    contentDescription = if (state.revealKey) "Hide key" else "Show key",
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (state.connected) {
+                    Icon(
+                        imageVector = Icons.Outlined.CheckCircle,
+                        contentDescription = "Connected",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                IconButton(onClick = onToggleReveal) {
+                    Icon(
+                        imageVector = if (state.revealKey) {
+                            Icons.Outlined.VisibilityOff
+                        } else {
+                            Icons.Outlined.Visibility
+                        },
+                        contentDescription = if (state.revealKey) "Hide key" else "Show key",
+                    )
+                }
             }
         },
         modifier = Modifier.fillMaxWidth(),
     )
 
+    Spacer(Modifier.height(10.dp))
+    NoteRow(
+        icon = Icons.Outlined.Lock,
+        text = "Stored in the Android Keystore, AES-256-GCM. Never written to the database, " +
+            "never logged, excluded from backup.",
+    )
+
+    apiKeyUrl(state.type)?.let { url ->
+        Spacer(Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
+                .clickable { uriHandler.openUri(url) },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(17.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "Get a free key at ${url.removePrefix("https://").substringBefore('/')}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+
     Spacer(Modifier.height(12.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Button(onClick = onTest, enabled = state.canTest) { Text("Test") }
+        Button(onClick = onTest, enabled = state.canTest, shape = RoundedCornerShape(14.dp)) {
+            Text("Test")
+        }
         if (state.test is TestState.Running) {
             Spacer(Modifier.width(12.dp))
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -277,6 +366,54 @@ private fun ConnectPage(
         }
 
         else -> Unit
+    }
+
+    Spacer(Modifier.height(14.dp))
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        NoteRow(
+            icon = Icons.Outlined.Shield,
+            text = "Your workflows, history and key stay on this device. Text goes only to the " +
+                "provider you just chose.",
+            modifier = Modifier.padding(14.dp),
+        )
+    }
+}
+
+@Composable
+private fun OnboardingLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        letterSpacing = 0.6.sp,
+        modifier = Modifier.padding(bottom = 10.dp),
+    )
+}
+
+@Composable
+private fun NoteRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier, verticalAlignment = Alignment.Top) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.outline,
+            modifier = Modifier
+                .padding(top = 1.dp, end = 8.dp)
+                .size(15.dp),
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -303,26 +440,19 @@ private fun DonePage(connected: Boolean) = PageColumn {
 }
 
 @Composable
-private fun PageIndicator(current: Int, count: Int) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
+private fun ForwardButton(label: String, enabled: Boolean, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.height(50.dp),
     ) {
-        repeat(count) { index ->
-            val width by animateDpAsState(if (index == current) 22.dp else 8.dp, label = "dot$index")
-            Box(
-                Modifier
-                    .padding(horizontal = 3.dp)
-                    .size(width = width, height = 8.dp)
-                    .background(
-                        color = if (index == current) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        },
-                        shape = CircleShape,
-                    ),
-            )
-        }
+        Text(label)
+        Spacer(Modifier.width(8.dp))
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+            contentDescription = null,
+            modifier = Modifier.size(19.dp),
+        )
     }
 }

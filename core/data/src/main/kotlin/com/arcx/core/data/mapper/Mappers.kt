@@ -2,9 +2,11 @@ package com.arcx.core.data.mapper
 
 import com.arcx.core.data.database.ProviderEntity
 import com.arcx.core.data.database.RunEntity
+import com.arcx.core.data.database.RunSummaryRow
 import com.arcx.core.data.database.WorkflowEntity
 import com.arcx.core.model.ProviderConfig
 import com.arcx.core.model.RunRecord
+import com.arcx.core.model.RunSummary
 import com.arcx.core.model.Workflow
 
 fun WorkflowEntity.toModel(): Workflow = Workflow(
@@ -85,6 +87,21 @@ fun RunEntity.toModel(): RunRecord = RunRecord(
     outputPreview = outputPreview,
     error = error,
     screenshotPath = screenshotPath,
+)
+
+fun RunSummaryRow.toModel(): RunSummary = RunSummary(
+    id = id,
+    workflowId = workflowId,
+    workflowName = workflowName,
+    workflowIcon = workflowIcon,
+    startedAt = startedAt,
+    durationMs = durationMs,
+    providerLabel = providerLabel,
+    model = model,
+    status = status,
+    // First line only: the list gives this one row, and a provider's stack trace would take it.
+    error = error?.lineSequence()?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() },
+    hasScreenshot = hasScreenshot,
 )
 
 /** Previews are clamped on the way in: a run's full payload must never reach the database. */

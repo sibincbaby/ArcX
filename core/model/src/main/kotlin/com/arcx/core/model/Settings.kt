@@ -38,4 +38,14 @@ data class UserSettings(
      */
     val compactPicker: Boolean = false,
     val screenshotRetention: ScreenshotRetention = ScreenshotRetention.MONTH,
+    /**
+     * Whether ArcX offers itself as a target for the accessibility button and the volume-key
+     * shortcut.
+     *
+     * Off by default, and a setting rather than a manifest flag, because appearing in that list is
+     * not something an app should decide for the user — it is a system control they may have
+     * assigned to something they depend on. Turning it on only makes ArcX *offerable*; the
+     * assignment is still theirs to make in system Settings.
+     */
+    val accessibilityButtonOffered: Boolean = false,
 )

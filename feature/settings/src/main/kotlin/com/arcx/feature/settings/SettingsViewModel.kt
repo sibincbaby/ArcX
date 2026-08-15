@@ -43,6 +43,8 @@ data class ProviderRow(
 data class SurfacePermissions(
     val overlayGranted: Boolean = false,
     val screenReadingEnabled: Boolean = false,
+    /** Switched on *and* actually bound. False with [screenReadingEnabled] true is the stranded state. */
+    val screenReadingRunning: Boolean = false,
     val batteryExempt: Boolean = false,
     /** Null when this device exposes no autostart screen we can open. */
     val hasAutostartScreen: Boolean = false,
@@ -111,6 +113,7 @@ class SettingsViewModel @Inject constructor(
         permissions.value = SurfacePermissions(
             overlayGranted = surfaces.isOverlayGranted(),
             screenReadingEnabled = surfaces.isScreenReadingEnabled(),
+            screenReadingRunning = surfaces.isScreenReadingRunning(),
             batteryExempt = surfaces.isIgnoringBatteryOptimisation(),
             hasAutostartScreen = surfaces.autostartIntent() != null,
             launcherIconEnabled = surfaces.isLauncherIconEnabled(),
@@ -147,6 +150,9 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun onAddQuickTile() = surfaces.requestAddQuickTile()
+
+    fun onAccessibilityButtonOfferedChange(offered: Boolean) =
+        update { it.copy(accessibilityButtonOffered = offered) }
 
     fun onBubbleOpensFullListChange(enabled: Boolean) =
         update { it.copy(bubbleOpensFullList = enabled) }

@@ -15,7 +15,10 @@ import com.arcx.core.model.AiRequest
 import com.arcx.core.model.ModelInfo
 import com.arcx.core.model.ProviderConfig
 import com.arcx.core.model.ProviderType
+import com.arcx.core.model.RunOutcome
 import com.arcx.core.model.RunRecord
+import com.arcx.core.model.RunStatus
+import com.arcx.core.model.RunSummary
 import com.arcx.core.model.UserSettings
 import com.arcx.core.model.Workflow
 import kotlinx.coroutines.flow.Flow
@@ -83,7 +86,21 @@ class FakeHistoryRepository : HistoryRepository {
     val records = mutableListOf<RunRecord>()
     var cleared = false
 
-    override fun observeAll(): Flow<List<RunRecord>> = MutableStateFlow(records.toList())
+    override fun observeRecent(limit: Int): Flow<List<RunSummary>> =
+        MutableStateFlow(records.takeLast(limit).map { it.toSummary() })
+
+    override fun observeSince(since: Long): Flow<List<RunOutcome>> =
+        MutableStateFlow(
+            records.filter { it.startedAt >= since }.map { RunOutcome(it.durationMs, it.status) },
+        )
+
+    override fun observeAverageDurations(): Flow<Map<String, Long>> =
+        MutableStateFlow(
+            records.filter { it.status == RunStatus.SUCCESS }
+                .groupBy { it.workflowId }
+                .mapValues { (_, runs) -> runs.sumOf { it.durationMs } / runs.size },
+        )
+
     override suspend fun get(id: String): RunRecord? = records.firstOrNull { it.id == id }
     override suspend fun record(run: RunRecord) {
         records += run
@@ -94,6 +111,20 @@ class FakeHistoryRepository : HistoryRepository {
         records.clear()
     }
 }
+
+private fun RunRecord.toSummary() = RunSummary(
+    id = id,
+    workflowId = workflowId,
+    workflowName = workflowName,
+    workflowIcon = workflowIcon,
+    startedAt = startedAt,
+    durationMs = durationMs,
+    providerLabel = providerLabel,
+    model = model,
+    status = status,
+    error = error,
+    hasScreenshot = screenshotPath != null,
+)
 
 class FakeSettingsRepository(
     initial: UserSettings = UserSettings(),
@@ -139,10 +170,29 @@ class FakeScreenContextProvider(
     var canCapture: Boolean = false,
     var jpeg: ByteArray? = null,
 ) : ScreenContextProvider {
+    /** Counted so a test can assert the screen was never read, not merely that it read nothing. */
+    var screenTextReads = 0
+        private set
+
     override fun isAvailable(): Boolean = available
-    override suspend fun screenText(): String? = if (available) text else null
+    override suspend fun screenText(): String? {
+        screenTextReads++
+        return if (available) text else null
+    }
     override fun canScreenshot(): Boolean = canCapture
     override suspend fun screenshot(): ByteArray? = if (canCapture) jpeg else null
+
+    /** Counted so a test can tell a fresh grab apart from a read of the held frame. */
+    var freshCaptures = 0
+        private set
+
+    /** Null models the platform refusing — a secure window, or two grabs too close together. */
+    var freshJpeg: ByteArray? = null
+
+    override suspend fun captureScreenshotNow(): ByteArray? {
+        freshCaptures++
+        return if (canCapture) freshJpeg else null
+    }
     override fun currentPackage(): String? = if (available) packageName else null
     override suspend fun replaceFocusedText(text: String): Boolean = false
 }
@@ -175,7 +225,13 @@ class FakeScreenshotStore : ScreenshotStore {
 
 class FakeClipboard(var contents: String? = null) : ClipboardAccess {
     var written: Pair<String, String>? = null
-    override fun read(): String? = contents
+    var reads = 0
+        private set
+
+    override fun read(): String? {
+        reads++
+        return contents
+    }
     override fun write(label: String, text: String) {
         written = label to text
     }

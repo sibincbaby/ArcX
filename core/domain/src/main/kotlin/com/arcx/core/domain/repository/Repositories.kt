@@ -1,7 +1,9 @@
 package com.arcx.core.domain.repository
 
 import com.arcx.core.model.ProviderConfig
+import com.arcx.core.model.RunOutcome
 import com.arcx.core.model.RunRecord
+import com.arcx.core.model.RunSummary
 import com.arcx.core.model.UserSettings
 import com.arcx.core.model.Workflow
 import kotlinx.coroutines.flow.Flow
@@ -36,9 +38,26 @@ interface ProviderRepository {
     suspend fun hasKey(id: String): Boolean
 }
 
+/**
+ * Run history, deliberately without a "give me everything" method.
+ *
+ * Every read here is bounded — by a row count, by a timestamp, or by being an aggregate the
+ * database computes itself. The screens that show history are the ones a user opens most, and
+ * an unbounded read is the one thing that makes them get slower the longer the app is owned.
+ */
 interface HistoryRepository {
-    fun observeAll(): Flow<List<RunRecord>>
+    /** Newest first. Defaults to the whole retained window, which is itself capped. */
+    fun observeRecent(limit: Int = RunRecord.HISTORY_LIMIT): Flow<List<RunSummary>>
+
+    /** Runs started at or after [since]. For counting a day, not for listing one. */
+    fun observeSince(since: Long): Flow<List<RunOutcome>>
+
+    /** Mean duration of each workflow's successful runs, keyed by workflow id. Aggregated in SQL. */
+    fun observeAverageDurations(): Flow<Map<String, Long>>
+
+    /** The full row, previews included. Only the detail sheet needs this. */
     suspend fun get(id: String): RunRecord?
+
     suspend fun record(run: RunRecord)
     suspend fun clear()
 }

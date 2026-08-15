@@ -14,11 +14,12 @@
   not widen this as far as you would hope: Android exposes only the top task's application window,
   so a window sitting behind ArcX's runner is unreadable no matter what is set here.
 
-  flagRequestAccessibilityButton only asks to be listed as a target the user can assign to the
-  accessibility button and the volume-key shortcut; it grants nothing on its own and does nothing
-  at all until they pick ArcX there. It is worth asking for because it is the one trigger that
-  works from inside any app without an overlay, a spare Quick Settings slot or a free corner of a
-  home screen — see onAccessibilityButtonClicked.
+  flagRequestAccessibilityButton is deliberately NOT here. It would put ArcX in the
+  accessibility-button and volume-key target list for everyone who ever grants the permission,
+  and that list is a system control the user may already have pointed at something they depend
+  on. Granting accessibility and volunteering for a system shortcut are two different decisions,
+  so the flag is applied at runtime from UserSettings.accessibilityButtonOffered instead — see
+  ArcxAccessibilityService.offerAccessibilityButton.
 
   canTakeScreenshot is what vision workflows run on, and it is the reason ArcX does not need
   MediaProjection: no per-session system consent dialog, so a workflow that looks at the screen is
@@ -29,7 +30,7 @@
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagRequestAccessibilityButton"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
     android:canTakeScreenshot="true"
     android:description="@string/arcx_accessibility_description"

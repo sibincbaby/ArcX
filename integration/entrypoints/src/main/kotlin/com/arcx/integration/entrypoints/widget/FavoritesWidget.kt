@@ -5,7 +5,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.ColorFilter
 import androidx.glance.GlanceTheme
+import androidx.glance.Image
+import androidx.glance.ImageProvider
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
@@ -23,6 +26,7 @@ import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.padding
+import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
@@ -31,12 +35,20 @@ import com.arcx.core.model.Workflow
 import com.arcx.integration.entrypoints.ArcxDeepLinks
 import com.arcx.integration.entrypoints.R
 import com.arcx.integration.entrypoints.di.entrypointsGraph
+import com.arcx.integration.entrypoints.shortcut.WorkflowIconBitmap
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** A home screen cell is small; past six rows the widget scrolls instead of helping. */
 private const val MAX_WIDGET_WORKFLOWS = 6
+
+/**
+ * Fixed pixels, not dp: this bitmap crosses into the launcher's process through a RemoteViews,
+ * where our density does not apply. Big enough for any launcher's scaling, small enough that six
+ * of them stay well under the transaction limit.
+ */
+private const val GLYPH_PX = 72
 
 /**
  * The home screen surface: the user's favourites, one tap from anywhere they already are.
@@ -136,7 +148,14 @@ private fun WorkflowCell(context: Context, workflow: Workflow) {
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = workflow.icon.ifBlank { "✨" })
+        // Rasterised rather than drawn as text: a workflow's icon is a vector now, and Glance
+        // cannot compose one. Tinted here so it still follows the widget's own theme.
+        Image(
+            provider = ImageProvider(WorkflowIconBitmap.glyph(workflow.icon, GLYPH_PX)),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
+            modifier = GlanceModifier.size(18.dp),
+        )
         Spacer(GlanceModifier.width(10.dp))
         Text(
             text = workflow.name,

@@ -8,9 +8,12 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arcx.core.common.prompt.PromptVariable
+import com.arcx.core.designsystem.component.DEFAULT_WORKFLOW_ICON
 import com.arcx.core.domain.ai.AiProviderRegistry
+import com.arcx.core.domain.execution.ExecutionState
 import com.arcx.core.domain.repository.ProviderRepository
 import com.arcx.core.domain.repository.WorkflowRepository
+import com.arcx.core.domain.usecase.ExecuteWorkflowUseCase
 import com.arcx.core.domain.usecase.SaveWorkflowUseCase
 import com.arcx.core.model.InputSource
 import com.arcx.core.model.ModelInfo
@@ -18,6 +21,7 @@ import com.arcx.core.model.OutputTarget
 import com.arcx.core.model.ProviderConfig
 import com.arcx.core.model.Workflow
 import com.arcx.core.model.WorkflowCategory
+import com.arcx.core.model.WorkflowInput
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -40,10 +44,18 @@ internal sealed interface ModelListState {
     data class Unavailable(val reason: String) : ModelListState
 }
 
+/** The builder's "try it" panel. A real run, on the unsaved form, recorded nowhere. */
+internal sealed interface TestRunState {
+    data object Idle : TestRunState
+    data object Running : TestRunState
+    data class Done(val text: String, val durationMs: Long, val model: String) : TestRunState
+    data class Failed(val message: String) : TestRunState
+}
+
 internal data class WorkflowEditorState(
     val loading: Boolean = true,
     val name: String = "",
-    val icon: String = "✨",
+    val icon: String = DEFAULT_WORKFLOW_ICON,
     val category: WorkflowCategory = WorkflowCategory.CUSTOM,
     val input: InputSource = InputSource.SELECTED_TEXT,
     val prompt: TextFieldValue = TextFieldValue(""),
@@ -55,6 +67,9 @@ internal data class WorkflowEditorState(
     val maxTokens: String = "",
     val providers: List<ProviderConfig> = emptyList(),
     val models: ModelListState = ModelListState.Idle,
+    /** Text the "try it" panel runs against. Not part of the workflow, so never saved. */
+    val sampleText: String = "",
+    val test: TestRunState = TestRunState.Idle,
     val nameError: Boolean = false,
     val promptError: Boolean = false,
     val saving: Boolean = false,
@@ -107,6 +122,7 @@ internal class WorkflowEditorViewModel @Inject constructor(
     private val providers: ProviderRepository,
     private val registry: AiProviderRegistry,
     private val saveWorkflow: SaveWorkflowUseCase,
+    private val execute: ExecuteWorkflowUseCase,
 ) : ViewModel() {
 
     /**
@@ -121,6 +137,7 @@ internal class WorkflowEditorViewModel @Inject constructor(
     private var baseline = WorkflowEditorState().snapshot()
     private var started = false
     private var modelJob: Job? = null
+    private var testJob: Job? = null
 
     private val savedEvents = Channel<Unit>(Channel.CONFLATED)
     val saved: Flow<Unit> = savedEvents.receiveAsFlow()
@@ -247,6 +264,57 @@ internal class WorkflowEditorViewModel @Inject constructor(
         }
     }
 
+    fun setSampleText(value: String) {
+        state = state.copy(sampleText = value, test = TestRunState.Idle)
+    }
+
+    /**
+     * Runs the form as it stands, against the sample text, through the same use case every
+     * entry point uses — so what comes back here is what will come back on the phone, provider
+     * errors and all. Nothing is saved and nothing is recorded in History.
+     */
+    fun runTest() {
+        val prompt = state.prompt.text.trim()
+        if (prompt.isBlank()) {
+            state = state.copy(promptError = true)
+            return
+        }
+        testJob?.cancel()
+        state = state.copy(test = TestRunState.Running)
+
+        // MANUAL because the sample text is typed in here; the real input source would send the
+        // test looking at a selection or the screen, neither of which exists in the builder.
+        val draft = state.toWorkflow(null).copy(input = InputSource.MANUAL)
+        testJob = viewModelScope.launch {
+            var answer = ""
+            execute(draft, WorkflowInput(text = state.sampleText), recordHistory = false)
+                .collect { execution ->
+                    when (execution) {
+                        is ExecutionState.Streaming -> answer = execution.text
+                        is ExecutionState.Success -> state = state.copy(
+                            test = TestRunState.Done(
+                                text = execution.text,
+                                durationMs = execution.durationMs,
+                                model = draft.model ?: "provider default",
+                            ),
+                        )
+
+                        is ExecutionState.Failed -> state = state.copy(
+                            test = TestRunState.Failed(
+                                execution.error.message ?: "That did not come back.",
+                            ),
+                        )
+
+                        else -> Unit
+                    }
+                }
+            if (state.test is TestRunState.Running) {
+                // Cancelled or ended without a terminal state; keep whatever streamed in.
+                state = state.copy(test = TestRunState.Done(answer, 0L, draft.model.orEmpty()))
+            }
+        }
+    }
+
     fun save() {
         val name = state.name.trim()
         val prompt = state.prompt.text.trim()
@@ -292,7 +360,7 @@ private fun WorkflowEditorState.toWorkflow(original: Workflow?): Workflow {
     return Workflow(
         id = if (forking) "" else original?.id.orEmpty(),
         name = name.trim(),
-        icon = icon.trim().ifBlank { "✨" },
+        icon = icon.trim().ifBlank { DEFAULT_WORKFLOW_ICON },
         category = category,
         input = input,
         prompt = prompt.text.trim(),

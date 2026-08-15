@@ -57,7 +57,7 @@ object ArcxShortcuts {
             .setShortLabel(workflow.name.take(SHORT_LABEL_MAX).ifBlank { "ArcX" })
             .setLongLabel(workflow.name.ifBlank { "ArcX" })
             .setRank(rank)
-            .setIcon(EmojiIcon.adaptive(workflow.icon, context.resources.displayMetrics.density))
+            .setIcon(WorkflowIconBitmap.adaptive(workflow.icon, context.resources.displayMetrics.density))
             // A pinned shortcut outlives the app that made it, so this has to be the same deep link
             // every other surface uses rather than an Activity reference that a refactor could move.
             .setIntent(ArcxDeepLinks.intent(context, workflow.id))

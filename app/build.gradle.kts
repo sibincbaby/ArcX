@@ -21,6 +21,19 @@ android {
                 "proguard-rules.pro",
             )
         }
+
+        /**
+         * What :benchmark measures against. Release-like — not debuggable, so ART optimises it
+         * normally — but signed with the debug key and unshrunk, so it installs without a signing
+         * config and the stack traces still name real classes.
+         */
+        create("benchmark") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     packaging {

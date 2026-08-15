@@ -21,11 +21,33 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** How the library orders itself inside each section. */
+internal enum class LibrarySort(val label: String) {
+    RECENT("Recently updated"),
+    NAME("Name A–Z"),
+}
+
+/** A run of rows under one heading. A null [title] is the flat list a search produces. */
+internal data class LibrarySection(
+    val title: String?,
+    val workflows: List<Workflow>,
+)
+
+/** One filter pill: the category, its display name, and how many rows are behind it. */
+internal data class CategoryCount(
+    val category: WorkflowCategory,
+    val label: String,
+    val count: Int,
+)
+
 internal data class WorkflowListUiState(
     val loading: Boolean = true,
     val query: String = "",
     val category: WorkflowCategory? = null,
-    val workflows: List<Workflow> = emptyList(),
+    val sort: LibrarySort = LibrarySort.RECENT,
+    val total: Int = 0,
+    val counts: List<CategoryCount> = emptyList(),
+    val sections: List<LibrarySection> = emptyList(),
     /**
      * Whether the library has anything in it at all. Without this the screen cannot tell
      * "you have no workflows yet" from "your filter matched none", which need different copy.
@@ -33,6 +55,7 @@ internal data class WorkflowListUiState(
     val libraryIsEmpty: Boolean = false,
 ) {
     val isFiltered: Boolean get() = query.isNotBlank() || category != null
+    val isEmpty: Boolean get() = sections.all { it.workflows.isEmpty() }
 }
 
 @HiltViewModel
@@ -46,18 +69,25 @@ internal class WorkflowListViewModel @Inject constructor(
 
     private val query = MutableStateFlow("")
     private val category = MutableStateFlow<WorkflowCategory?>(null)
+    private val sort = MutableStateFlow(LibrarySort.RECENT)
 
     /** Copies made from a read-only built-in open straight into the editor; nothing else navigates. */
     private val editRequests = Channel<String>(Channel.BUFFERED)
     val editCopyRequests: Flow<String> = editRequests.receiveAsFlow()
 
     val uiState: StateFlow<WorkflowListUiState> =
-        combine(workflows.observeAll(), query, category) { all, text, filter ->
+        combine(workflows.observeAll(), query, category, sort) { all, text, filter, order ->
+            val visible = all.filter { it.matches(text, filter) }
             WorkflowListUiState(
                 loading = false,
                 query = text,
                 category = filter,
-                workflows = all.filter { it.matches(text, filter) },
+                sort = order,
+                total = all.size,
+                counts = WorkflowCategory.entries
+                    .map { CategoryCount(it, it.label, all.count { w -> w.category == it }) }
+                    .filter { it.count > 0 },
+                sections = sectionsOf(visible, order, grouped = text.isBlank()),
                 libraryIsEmpty = all.isEmpty(),
             )
         }.stateIn(
@@ -72,6 +102,10 @@ internal class WorkflowListViewModel @Inject constructor(
 
     fun setCategory(value: WorkflowCategory?) {
         category.value = value
+    }
+
+    fun setSort(value: LibrarySort) {
+        sort.value = value
     }
 
     fun clearFilters() {
@@ -99,6 +133,34 @@ internal class WorkflowListViewModel @Inject constructor(
         viewModelScope.launch {
             val copy = clone(workflow.id)
             if (openEditor && copy != null) editRequests.send(copy.id)
+        }
+    }
+}
+
+/**
+ * Pinned first, then one section per category that has anything in it.
+ *
+ * A search skips the grouping entirely: someone who typed three letters is looking for one
+ * workflow, and headings between the two results only add distance to it.
+ */
+private fun sectionsOf(
+    workflows: List<Workflow>,
+    sort: LibrarySort,
+    grouped: Boolean,
+): List<LibrarySection> {
+    val ordered = when (sort) {
+        LibrarySort.NAME -> workflows.sortedBy { it.name.lowercase() }
+        LibrarySort.RECENT -> workflows.sortedByDescending { it.updatedAt }
+    }
+    if (!grouped) return listOf(LibrarySection(title = null, workflows = ordered))
+
+    val pinned = ordered.filter { it.isPinned }
+    val rest = ordered.filterNot { it.isPinned }
+    return buildList {
+        if (pinned.isNotEmpty()) add(LibrarySection("Pinned", pinned))
+        WorkflowCategory.entries.forEach { category ->
+            val inCategory = rest.filter { it.category == category }
+            if (inCategory.isNotEmpty()) add(LibrarySection(category.label, inCategory))
         }
     }
 }

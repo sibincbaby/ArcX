@@ -29,14 +29,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.arcx.core.designsystem.component.EmptyState
-import com.arcx.core.designsystem.component.SectionHeader
-import com.arcx.core.designsystem.component.StreamingIndicator
-import com.arcx.core.designsystem.component.WorkflowIcon
-import com.arcx.core.model.Workflow
 import com.arcx.core.designsystem.component.PanelListMaxHeight
+import com.arcx.core.designsystem.component.SectionLabel
+import com.arcx.core.designsystem.component.StreamingIndicator
+import com.arcx.core.designsystem.component.WiringChips
+import com.arcx.core.designsystem.component.WorkflowIcon
 import com.arcx.core.designsystem.component.WorkflowPanelCard
 import com.arcx.core.designsystem.component.WorkflowPanelEmpty
 import com.arcx.core.designsystem.component.WorkflowPanelRow
+import com.arcx.core.designsystem.component.shortLabel
+import com.arcx.core.designsystem.theme.tint
+import com.arcx.core.model.Workflow
 import com.arcx.feature.runner.RunnerUiState
 
 /**
@@ -106,7 +109,7 @@ internal fun WorkflowPicker(
             ) {
                 state.sections.forEach { section ->
                     section.title?.let { title ->
-                        item(key = "header-$title") { SectionHeader(title, Modifier.padding(top = 4.dp)) }
+                        item(key = "header-$title") { SectionLabel(title) }
                     }
                     items(section.workflows, key = { it.id }) { workflow ->
                         WorkflowRow(workflow, onClick = { onPick(workflow) })
@@ -128,8 +131,14 @@ private fun WorkflowRow(workflow: Workflow, onClick: () -> Unit) {
             .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        WorkflowIcon(workflow.icon, size = 40.dp)
-        Spacer(Modifier.width(14.dp))
+        val tint = workflow.category.tint()
+        WorkflowIcon(
+            icon = workflow.icon,
+            size = 38.dp,
+            container = tint.container,
+            content = tint.content,
+        )
+        Spacer(Modifier.width(13.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 text = workflow.name,
@@ -137,19 +146,17 @@ private fun WorkflowRow(workflow: Workflow, onClick: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = "${workflow.category.label()} · ${workflow.output.label()}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            Spacer(Modifier.height(4.dp))
+            WiringChips(
+                input = workflow.input.shortLabel,
+                output = workflow.output.shortLabel,
             )
         }
         if (workflow.isPinned) {
             Icon(
                 imageVector = Icons.Outlined.PushPin,
                 contentDescription = "Pinned",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(16.dp),
             )
         }
@@ -187,8 +194,11 @@ private fun CompactWorkflowPanel(
                 else -> LazyColumn(Modifier.heightIn(max = PanelListMaxHeight)) {
                     items(workflows, key = { it.id }) { workflow ->
                         WorkflowPanelRow(
-                            emoji = workflow.icon,
+                            icon = workflow.icon,
                             label = workflow.name,
+                            subtitle = "${workflow.input.shortLabel} → ${workflow.output.shortLabel}",
+                            container = workflow.category.tint().container,
+                            content = workflow.category.tint().content,
                             onClick = { onPick(workflow) },
                         )
                     }

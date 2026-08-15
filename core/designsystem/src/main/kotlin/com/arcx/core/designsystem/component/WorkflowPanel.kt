@@ -1,5 +1,6 @@
 package com.arcx.core.designsystem.component
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,9 +9,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -18,8 +25,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.arcx.core.designsystem.theme.MetaTextStyle
 
 /**
  * The floating workflow panel — a small centred card of one-tap rows.
@@ -28,14 +37,15 @@ import androidx.compose.ui.unit.dp
  * overlay window, and the runner Activity when the user has asked for the compact list. They looked
  * alike once by coincidence and immediately drifted, which is the whole reason this file exists.
  *
- * Deliberately model-agnostic. :core:designsystem does not depend on :core:model, and a panel that
- * only knows how to render a Workflow could not be reused by the bubble, which is handed a
- * different list from a different layer.
+ * Deliberately model-agnostic. The panel takes strings and colours, never a Workflow, so the
+ * bubble — which is handed a different list from a different layer — can draw the same card.
  */
 @Composable
 fun WorkflowPanelCard(
     title: String,
     modifier: Modifier = Modifier,
+    /** Small mono note on the right of the title, e.g. what the panel is about to read. */
+    meta: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
@@ -48,42 +58,129 @@ fun WorkflowPanelCard(
         tonalElevation = 3.dp,
     ) {
         Column(Modifier.padding(vertical = 12.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                if (meta != null) {
+                    Text(
+                        text = meta,
+                        style = MetaTextStyle,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+            }
             content()
         }
     }
 }
 
-/** One row of the panel: emoji, name, nothing else. The tap runs it. */
+/**
+ * One row of the panel: icon, name, and the wiring underneath. The tap runs it — there is no
+ * second confirmation anywhere in the product, and the panel is the fastest path in it.
+ */
 @Composable
 fun WorkflowPanelRow(
-    emoji: String,
+    icon: String,
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    container: Color = Color.Unspecified,
+    content: Color = Color.Unspecified,
+    /** Marks the row the panel expects to be tapped, and shows a play affordance on it. */
+    highlighted: Boolean = false,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 1.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .then(
+                if (highlighted) {
+                    Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                } else {
+                    Modifier
+                },
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start,
     ) {
-        WorkflowIcon(emoji = emoji, size = 40.dp)
-        Spacer(Modifier.width(14.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.clip(RoundedCornerShape(4.dp)),
+        WorkflowIcon(
+            icon = icon,
+            size = 36.dp,
+            container = container.takeIf { it != Color.Unspecified }
+                ?: MaterialTheme.colorScheme.secondaryContainer,
+            content = content.takeIf { it != Color.Unspecified }
+                ?: MaterialTheme.colorScheme.onSecondaryContainer,
         )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (highlighted) {
+            Icon(
+                imageVector = Icons.Outlined.PlayArrow,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+/** The way out of the shortlist and into everything, pinned under a divider at the bottom. */
+@Composable
+fun WorkflowPanelFooter(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        HorizontalDivider(
+            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 
