@@ -55,6 +55,7 @@ fun ArcXTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = ArcXTypography,
+        shapes = ArcXShapes,
         content = content,
     )
 }

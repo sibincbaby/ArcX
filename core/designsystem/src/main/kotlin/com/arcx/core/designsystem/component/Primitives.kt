@@ -6,29 +6,31 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arcx.core.designsystem.theme.MetaTextStyle
+import com.arcx.core.designsystem.theme.Spacing
 
 /** A quiet all-caps divider between runs of rows. Louder than nothing, quieter than a heading. */
 @Composable
@@ -38,7 +40,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         letterSpacing = 0.6.sp,
-        modifier = modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        modifier = modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Sm),
     )
 }
 
@@ -80,8 +82,108 @@ private fun WireChip(text: String) {
 }
 
 /**
- * The filter pill used by the library and the gallery. Squarer and denser than [FilterChip],
- * and it carries a count — "Writing 6" answers "is it worth tapping" before the tap.
+ * The small squarish pill, in all the jobs it does: the library and gallery filters, the "Live /
+ * Off" surface chips on Home, and the gallery's Install button — which was, literally, this
+ * component's unselected style rebuilt in a feature module.
+ *
+ * Three sets of numbers collapsed into one here. All three were 32dp tall (now a floor, not a
+ * fixed height, so a large font scale grows the pill instead of clipping it) and padded by 13,
+ * 13 and 11dp, which is one value pretending to be two.
+ *
+ * The colour parameters exist for the two callers that are not a filter: a surface chip states
+ * its own tint, and Install draws its label in primary while keeping the outlined shell.
+ *
+ * A null [onClick] makes the pill a label rather than a control — the gallery's "Added" state is
+ * this, and it deliberately does not claim a touch target it would do nothing with.
+ */
+@Composable
+fun ArcxPill(
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    selected: Boolean = false,
+    enabled: Boolean = true,
+    count: Int? = null,
+    /** A status dot, a warning icon, a tick. */
+    leading: (@Composable () -> Unit)? = null,
+    container: Color = Color.Unspecified,
+    content: Color = Color.Unspecified,
+    /**
+     * Whether to draw the edge, or null to infer it from the wash — which is what every filter and
+     * the gallery's Install want, and so is the default.
+     *
+     * It is a parameter because inference cannot express a pill that is transparent *and*
+     * borderless. Home's always-on surface chips are exactly that, and had to fake it by asking
+     * for the screen's own background colour as their wash — right over a Scaffold, wrong the
+     * moment such a pill sits on anything else.
+     */
+    outlined: Boolean? = null,
+) {
+    val shape = MaterialTheme.shapes.small
+    val background = when {
+        container != Color.Unspecified -> container
+        selected -> MaterialTheme.colorScheme.primaryContainer
+        else -> Color.Transparent
+    }
+    val foreground = when {
+        content != Color.Unspecified -> content
+        selected -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    // The outline is what gives an unfilled pill an edge. A pill with a wash already has one, and
+    // drawing both makes it read as selected-and-then-some — which is the inference a caller gets
+    // by saying nothing.
+    val hasBorder = outlined ?: (background == Color.Transparent)
+
+    Row(
+        modifier = modifier
+            .then(if (onClick != null) Modifier.minimumInteractiveComponentSize() else Modifier)
+            .heightIn(min = PillMinHeight)
+            .clip(shape)
+            .background(background)
+            .then(
+                if (hasBorder) {
+                    Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                } else {
+                    Modifier
+                },
+            )
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                } else {
+                    Modifier
+                },
+            )
+            .padding(horizontal = Spacing.Md),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
+    ) {
+        leading?.invoke()
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = foreground,
+            maxLines = 1,
+        )
+        if (count != null) {
+            Text(
+                text = count.toString(),
+                style = MetaTextStyle,
+                // Quieter than the label it belongs to, whichever colour that label is.
+                color = if (selected) foreground.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline,
+            )
+        }
+    }
+}
+
+/** All three copies were 32dp; a floor rather than a fixed height so a big font scale survives. */
+private val PillMinHeight = 32.dp
+
+/**
+ * The filter pill used by the library and the gallery, carrying a count — "Writing 6" answers
+ * "is it worth tapping" before the tap. Kept as its own name because that is what the two filter
+ * rows mean; it is [ArcxPill] underneath.
  */
 @Composable
 fun CountPill(
@@ -91,46 +193,102 @@ fun CountPill(
     modifier: Modifier = Modifier,
     count: Int? = null,
 ) {
-    val shape = RoundedCornerShape(9.dp)
+    ArcxPill(
+        label = label,
+        modifier = modifier,
+        onClick = onClick,
+        selected = selected,
+        count = count,
+    )
+}
+
+/** Filled reads as the thing to do; outlined reads as one of the things you may do. */
+enum class ArcxActionStyle { Filled, Outlined }
+
+/**
+ * The compact action button — denser than a Material [androidx.compose.material3.Button] and
+ * squarer than its pill, for the rows of actions under a result and beside the editor's Continue.
+ *
+ * Four copies of this existed at 38, 38, 32 and 50dp tall with 12, 12, 10 and 16dp corners, and
+ * every one of them was a hand-rolled Row with a plain `clickable` — which is how the fastest
+ * paths in the product ended up with touch targets under the 48dp minimum. That is fixed here
+ * rather than at the four call sites, so nothing built on this can regress it.
+ *
+ * [content] replaces the icon for the one caller that swaps it for a spinner while a test prompt
+ * is in flight.
+ */
+@Composable
+fun ArcxAction(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    icon: ImageVector? = null,
+    style: ArcxActionStyle = ArcxActionStyle.Outlined,
+    enabled: Boolean = true,
+    /** Says what an icon-only action does, for the click label and for the icon itself. */
+    contentDescription: String? = null,
+    contentColor: Color = Color.Unspecified,
+    content: (@Composable () -> Unit)? = null,
+) {
+    val shape = MaterialTheme.shapes.medium
+    val filled = style == ArcxActionStyle.Filled
+    val foreground = when {
+        contentColor != Color.Unspecified -> contentColor
+        filled -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
     Row(
         modifier = modifier
-            .height(32.dp)
+            .minimumInteractiveComponentSize()
+            .heightIn(min = ActionMinHeight)
             .clip(shape)
             .then(
-                if (selected) {
+                if (filled) {
                     Modifier.background(MaterialTheme.colorScheme.primaryContainer)
                 } else {
                     Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
                 },
             )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp),
+            .clickable(
+                enabled = enabled,
+                onClickLabel = contentDescription,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            // An icon on its own needs less room around it than a word does.
+            .padding(horizontal = if (label == null) Spacing.Md else Spacing.Lg),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            maxLines = 1,
-        )
-        if (count != null) {
-            Spacer(Modifier.width(6.dp))
+        when {
+            content != null -> content()
+
+            icon != null -> Icon(
+                imageVector = icon,
+                // Described only when there is no label to describe it — otherwise a screen
+                // reader says the same thing twice.
+                contentDescription = contentDescription.takeIf { label == null },
+                tint = foreground,
+                modifier = Modifier.size(ActionIconSize),
+            )
+        }
+        if (label != null) {
             Text(
-                text = count.toString(),
-                style = MetaTextStyle,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                } else {
-                    MaterialTheme.colorScheme.outline
-                },
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = foreground,
+                maxLines = 1,
             )
         }
     }
 }
+
+/** 40dp: the 38 the two result actions drew, on the grid. A floor, so a label can wrap it taller. */
+private val ActionMinHeight = 40.dp
+
+/** 18dp, the icon size the rest of the app uses beside labelLarge text. */
+private val ActionIconSize = 18.dp
 
 /**
  * Progress through a short, known sequence. Bars rather than dots: three steps read as a

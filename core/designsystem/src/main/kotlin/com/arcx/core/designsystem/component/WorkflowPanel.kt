@@ -21,11 +21,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.arcx.core.designsystem.theme.MetaTextStyle
@@ -52,7 +54,10 @@ fun WorkflowPanelCard(
         modifier = modifier
             .widthIn(max = PANEL_MAX_WIDTH)
             .fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        // The Panel tier, asked for rather than restated. This was the 24 of the 24/28 pair that
+        // tier was drawn from, and it is the half of it nothing else in the app uses — so left
+        // hardcoded it would be one number disagreeing with the file that names it.
+        shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         shadowElevation = 12.dp,
         tonalElevation = 3.dp,
@@ -111,7 +116,7 @@ fun WorkflowPanelRow(
                     Modifier
                 },
             )
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start,
@@ -164,7 +169,10 @@ fun WorkflowPanelFooter(label: String, onClick: () -> Unit, modifier: Modifier =
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                // One line of bodyMedium and 8dp of padding is a 36dp row, which is under the
+                // 48dp minimum — and this is the only way out of the bubble's shortlist.
+                .minimumInteractiveComponentSize()
+                .clickable(role = Role.Button, onClick = onClick)
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
