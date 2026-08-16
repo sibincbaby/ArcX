@@ -244,6 +244,16 @@ internal class BubbleOverlay(
                 // because ArcXTheme's status-bar SideEffect treats a non-Activity view context as
                 // "no status bar to tint" rather than casting blindly — an overlay window has none.
                 ArcXTheme(themeMode = themeMode, dynamicColor = dynamicColor) {
+                    // One or the other, never both — the strip is not drawn behind the panel.
+                    //
+                    // Drawing it there is the tempting other half of the idea the panel's
+                    // transition is built on: the card comes out of something that is still
+                    // visible. It cannot be made to hold still, though. The strip's place is a
+                    // setting in display coordinates, and expanded this composition fills a
+                    // window that starts 85px down the display — see [StripAnchor], which
+                    // measured the same disagreement — so a strip drawn back in would sit 85px
+                    // below where it had been standing. A jump is worse than an absence, and the
+                    // scrim covers that stretch of the edge anyway.
                     if (expanded) {
                         BubblePanel(
                             workflows = workflows,
@@ -460,14 +470,14 @@ internal class BubbleOverlay(
         params.x = 0
         params.y = 0
         params.flags = EXPANDED_FLAGS
-        applyLayout()
+        applyLayout(corner = CornerMove.YES)
     }
 
     private fun collapse() {
         if (!expanded) return
         expanded = false
         params.flags = COLLAPSED_FLAGS
-        applyCollapsedGeometry()
+        applyCollapsedGeometry(corner = CornerMove.YES)
     }
 
     /**
@@ -481,7 +491,7 @@ internal class BubbleOverlay(
      * intent stated in a way the window manager resolves itself, so there is nothing left to
      * correct and no rotation callback to miss.
      */
-    private fun applyCollapsedGeometry() {
+    private fun applyCollapsedGeometry(corner: CornerMove = CornerMove.NO) {
         val (_, screenHeight) = screenSize()
         val length = lengthPx()
         params.width = touchWidthPx()
@@ -493,7 +503,7 @@ internal class BubbleOverlay(
         // wants its top edge. Clamped so a percent near 0 or 1 shortens nothing and hides nothing.
         params.y = (screenHeight * verticalPercent - length / 2f).roundToInt()
             .coerceIn(0, (screenHeight - length).coerceAtLeast(0))
-        applyLayout()
+        applyLayout(corner)
     }
 
     /**
@@ -521,10 +531,44 @@ internal class BubbleOverlay(
             if (expanded) emptyList() else listOf(Rect(0, 0, v.width, v.height))
     }
 
-    private fun applyLayout() {
+    /**
+     * Whether this layout change moves the window's top-left corner. See [applyLayout].
+     */
+    private enum class CornerMove { YES, NO }
+
+    /**
+     * Hands [params] to the window manager, and — when the window's corner is moving — keeps the
+     * platform from sliding it there.
+     *
+     * **The strip used to fly across the screen, and this is why.** WindowManagerService plays a
+     * translate animation on any visible window whose frame origin moves while its size changes
+     * too (`WindowState.handleWindowMovedIfNeeded`, gated on `hasContentChanged`). Expanding and
+     * collapsing is exactly that: the frame goes from the strip's dock to the whole screen and
+     * back. Measured on device at `window_animation_scale=10`: on collapse the strip was drawn at
+     * the *expanded* window's origin — 135x338 at (0,85) — and slid the full diagonal to its dock
+     * at (945,673) over 3.0s, which is ~300ms at 1x. Expanding did the mirror image, taking the
+     * strip up to the top corner with it. Nothing in the strip's drawing moved; the window did.
+     *
+     * No public flag turns that off — `PRIVATE_FLAG_NO_MOVE_ANIMATION` is `@hide` — but the
+     * platform skips the animation for a window whose surface is already hidden. So the window is
+     * hidden for the single frame the move lands on and shown again on the next one. `View.post`
+     * is what makes that exactly one frame: the traversal that carries the move runs behind a
+     * sync barrier, and an ordinary posted message is held until it is over.
+     *
+     * `INVISIBLE` rather than `GONE` on purpose — GONE is the state that also tears the surface
+     * down, and getting a new one back is the slow, visible path `grabFrameThenOpen` avoids for
+     * the same reason.
+     *
+     * Only for the two transitions the user is watching. A settings edit also moves the corner,
+     * but it arrives while the user is on the Settings screen with the strip behind it, and
+     * blinking the window on every tick of a slider would be the worse trade.
+     */
+    private fun applyLayout(corner: CornerMove = CornerMove.NO) {
         val attached = view ?: return
+        if (corner == CornerMove.YES) attached.visibility = View.INVISIBLE
         // Throws once the view has been removed, which races with a settings change in flight.
         runCatching { windowManager.updateViewLayout(attached, params) }
+        if (corner == CornerMove.YES) attached.post { attached.visibility = View.VISIBLE }
     }
 
     private fun touchWidthPx(): Int = dpToPx(SidebarTouchWidth.value)
