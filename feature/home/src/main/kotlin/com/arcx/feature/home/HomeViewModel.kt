@@ -57,7 +57,23 @@ data class HomeTile(
 /** What a launch surface is currently doing, in the three states a chip can honestly report. */
 enum class SurfaceState { LIVE, ALWAYS_ON, OFF }
 
-data class SurfaceChip(val label: String, val state: SurfaceState)
+/**
+ * Which surface a chip is reporting on — the *subject*, not a destination.
+ *
+ * Home names what the chip is about and :app decides which Settings screen owns that subject
+ * today, the same way [HomeRoute]'s other callbacks say "see all workflows" rather than naming a
+ * tab route. Home cannot see :feature:settings anyway — features do not depend on each other —
+ * but even if it could, a chip pointing at a screen would have to be edited every time a control
+ * moved between screens, which is exactly what went wrong when the accessibility grant left
+ * Entry points and the "Screen text off" chip kept landing there.
+ */
+enum class SurfaceSubject { SIDEBAR, SHARE, SELECTION, SCREEN_TEXT }
+
+data class SurfaceChip(
+    val label: String,
+    val state: SurfaceState,
+    val subject: SurfaceSubject,
+)
 
 /**
  * Home is the library's fast path plus a live report on the ways into it.
@@ -216,13 +232,15 @@ class HomeViewModel @Inject constructor(
             // that everywhere. The stored flag keeps its old name; only the wording is user-facing.
             label = if (bubbleEnabled && granted.overlayGranted) "Sidebar on" else "Sidebar off",
             state = if (bubbleEnabled && granted.overlayGranted) SurfaceState.LIVE else SurfaceState.OFF,
+            subject = SurfaceSubject.SIDEBAR,
         ),
         // Both are declared in the manifest and cannot be switched off, so they never warn.
-        SurfaceChip("Share", SurfaceState.ALWAYS_ON),
-        SurfaceChip("Selection", SurfaceState.ALWAYS_ON),
+        SurfaceChip("Share", SurfaceState.ALWAYS_ON, SurfaceSubject.SHARE),
+        SurfaceChip("Selection", SurfaceState.ALWAYS_ON, SurfaceSubject.SELECTION),
         SurfaceChip(
             label = if (granted.screenReadingLive) "Screen text" else "Screen text off",
             state = if (granted.screenReadingLive) SurfaceState.LIVE else SurfaceState.OFF,
+            subject = SurfaceSubject.SCREEN_TEXT,
         ),
     )
 }

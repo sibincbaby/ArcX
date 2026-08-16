@@ -94,7 +94,8 @@ fun HomeRoute(
     onSeeAllWorkflows: () -> Unit,
     onSeeActivity: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenEntryPoints: () -> Unit,
+    /** Called with the subject of the chip that was tapped; see [SurfaceSubject]. */
+    onOpenSurfaceSettings: (SurfaceSubject) -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -113,7 +114,7 @@ fun HomeRoute(
         onSeeAllWorkflows = onSeeAllWorkflows,
         onSeeActivity = onSeeActivity,
         onOpenSettings = onOpenSettings,
-        onOpenEntryPoints = onOpenEntryPoints,
+        onOpenSurfaceSettings = onOpenSurfaceSettings,
     )
 }
 
@@ -132,7 +133,7 @@ private fun HomeScreen(
     onSeeAllWorkflows: () -> Unit,
     onSeeActivity: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenEntryPoints: () -> Unit,
+    onOpenSurfaceSettings: (SurfaceSubject) -> Unit,
 ) {
     var searchOpen by remember { mutableStateOf(false) }
 
@@ -237,7 +238,7 @@ private fun HomeScreen(
 
             if (state.surfaces.isNotEmpty() && !state.searching) {
                 item(key = "surfaces") {
-                    SurfaceStrip(chips = state.surfaces, onClick = onOpenEntryPoints)
+                    SurfaceStrip(chips = state.surfaces, onClick = onOpenSurfaceSettings)
                 }
             }
 
@@ -476,7 +477,7 @@ private fun Modifier.dashedOutline(color: Color) = drawBehind {
 }
 
 @Composable
-private fun SurfaceStrip(chips: List<SurfaceChip>, onClick: () -> Unit) {
+private fun SurfaceStrip(chips: List<SurfaceChip>, onClick: (SurfaceSubject) -> Unit) {
     val warning = warningTint()
     Row(
         modifier = Modifier
@@ -522,7 +523,11 @@ private fun SurfaceStrip(chips: List<SurfaceChip>, onClick: () -> Unit) {
 
             ArcxPill(
                 label = chip.label,
-                onClick = onClick,
+                // Every chip is a way into the setting behind it, including the two that cannot
+                // change: "Share" and "Selection" report a state nobody can act on, but the rows
+                // that describe them are still worth reaching. What differs per chip is where
+                // that setting lives, which is the caller's decision to make.
+                onClick = { onClick(chip.subject) },
                 leading = mark,
                 container = when (chip.state) {
                     SurfaceState.LIVE -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)

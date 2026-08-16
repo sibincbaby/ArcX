@@ -30,7 +30,6 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import com.arcx.core.designsystem.R as DesignSystemR
-import com.arcx.core.designsystem.component.SectionHeader
 import com.arcx.core.designsystem.theme.Spacing
 
 /**
@@ -89,7 +88,13 @@ internal fun PermissionsScreen(
             )
             Spacer(Modifier.height(Spacing.Md))
 
-            SectionHeader("Draw over other apps")
+            // No SectionHeader over any of the three, unlike Appearance or Privacy. Those screens
+            // hold four subjects each and their groups need naming; this one holds a single
+            // subject, and each group here is one row that already carries the permission's name.
+            // "Draw over other apps" over a row reading "Drawing over other apps" said it twice —
+            // to the eye as a repeated line, and to a screen reader as an extra stop now that
+            // SectionHeader is a real heading. The introduction is the sentence above: each of
+            // these buys one thing, named below.
             SettingsGroup {
                 SettingsRow(
                     title = "Drawing over other apps",
@@ -111,7 +116,6 @@ internal fun PermissionsScreen(
                     "window and works without it.",
             )
 
-            SectionHeader("Notifications")
             // Whether there is still a dialog to show. Android puts POST_NOTIFICATIONS up once and
             // never again, and below Android 13 there was never a dialog at all — notifications are
             // switched off in system settings, which is then the only place they can be switched
@@ -148,7 +152,6 @@ internal fun PermissionsScreen(
                     "edge sidebar, which Android requires to run behind an ongoing notification.",
             )
 
-            SectionHeader("Screen reading")
             // The disclosure sits above the control, which is the placement Play's policy asks for:
             // in front of the user before they act, never underneath the button it describes. The
             // first tap on that button also puts it up on its own screen with an accept action —
@@ -255,7 +258,11 @@ private fun ScreenReadingDisclosure() {
         color = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Column(Modifier.padding(Spacing.Lg)) {
-            Text("What this permission does", style = MaterialTheme.typography.titleSmall)
+            // Names the permission, because on Permissions this card is now the only thing
+            // introducing the group under it — the "Screen reading" heading that used to sit above
+            // it was repeating the row's own title. "This permission" was only ever unambiguous on
+            // the disclosure screen, where the app bar says which one.
+            Text("What screen reading does", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(Spacing.Sm))
             Text(
                 stringResource(DesignSystemR.string.arcx_accessibility_description),

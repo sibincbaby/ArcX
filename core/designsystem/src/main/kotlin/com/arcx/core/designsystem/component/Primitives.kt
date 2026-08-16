@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -204,8 +205,20 @@ fun ArcxPill(
             Text(
                 text = count.toString(),
                 style = MetaTextStyle,
-                // Quieter than the label it belongs to, whichever colour that label is.
-                color = if (selected) foreground.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline,
+                // Still quieter than the label it belongs to, but bought with type rather than
+                // with contrast. This was `outline` unselected and the label's colour at 70%
+                // selected, which measured 4.26:1, 4.27:1 and 4.04:1 — under the 4.5 that 11sp
+                // text needs, in three of the four theme-and-state combinations. `outline` is an
+                // M3 *boundary* role, spec'd for 3:1 and never meant to be read; WorkflowPanel's
+                // meta line moved off it for the same reason.
+                //
+                // So the count takes the label's own colour, and stays the quiet half of
+                // "Writing 6" by being 11sp against the label's 14, monospace against its sans,
+                // and now a weight lighter than it. Three differences a reader sees at a glance,
+                // none of them paid for in legibility. Weight is overridden here rather than in
+                // [MetaTextStyle], which the rest of the app wants at Medium.
+                fontWeight = FontWeight.Normal,
+                color = foreground,
             )
         }
     }

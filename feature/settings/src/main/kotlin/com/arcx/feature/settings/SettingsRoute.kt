@@ -27,13 +27,27 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcx.core.designsystem.component.LocalSnackbarHostState
 import com.arcx.core.designsystem.component.SectionHeader
+import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.model.ThemePreference
+
+/**
+ * The Settings screens something outside this module is allowed to ask for by name.
+ *
+ * Deliberately not the whole of the private [SettingsScreen] router. The provider editor needs an
+ * id to mean anything and the screen-reading disclosure is a gate that only makes sense arrived at
+ * from Permissions, so neither is a place to drop someone into; naming only the two linkable leaves
+ * keeps the router free to be resplit — as it just was, when the accessibility grant moved off
+ * Entry points — by changing [startScreen] rather than everything that links here.
+ */
+enum class SettingsDestination {
+    ENTRY_POINTS,
+    PERMISSIONS,
+}
 
 /**
  * Settings navigates itself. A nested NavHost would buy route strings and deep links for a
@@ -53,14 +67,30 @@ private enum class SettingsScreen {
 }
 
 /**
- * [startAtEntryPoints] is for the surface strip on Home. A chip that says the sidebar is off is
- * only useful if tapping it reaches the switch, and landing on the Settings index instead would
- * make the strip a signpost rather than a control.
+ * The one place the public destinations meet the private router. Exhaustive on purpose: adding a
+ * linkable screen has to be a decision made here, not a default that silently lands on the index.
+ */
+private fun startScreen(destination: SettingsDestination?): SettingsScreen = when (destination) {
+    null -> SettingsScreen.ROOT
+    SettingsDestination.ENTRY_POINTS -> SettingsScreen.ENTRY_POINTS
+    SettingsDestination.PERMISSIONS -> SettingsScreen.PERMISSIONS
+}
+
+/**
+ * [startAt] is for the surface strip on Home. A chip that says the sidebar is off is only useful
+ * if tapping it reaches the switch, and landing on the Settings index instead would make the strip
+ * a signpost rather than a control.
+ *
+ * A destination rather than the boolean this used to be, because the subjects the chips report on
+ * do not all live on one screen: the sidebar switch is on Entry points, the screen-reading grant is
+ * on Permissions. A flag could only ever point at one of them, and after the grant moved it pointed
+ * at the wrong one — the chip landed on Entry points beside a button that navigated onward, which
+ * is the two-tap signpost this parameter exists to prevent.
  */
 @Composable
 fun SettingsRoute(
     onBack: () -> Unit,
-    startAtEntryPoints: Boolean = false,
+    startAt: SettingsDestination? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -75,9 +105,13 @@ fun SettingsRoute(
         onPauseOrDispose { }
     }
 
-    var screen by rememberSaveable {
-        mutableStateOf(if (startAtEntryPoints) SettingsScreen.ENTRY_POINTS else SettingsScreen.ROOT)
-    }
+    // [startAt] is read by the initialiser and nowhere else, which is the whole of what keeps the
+    // deep link from firing twice. rememberSaveable runs this lambda only when it has nothing
+    // saved, so after a rotation or process death the screen the user is actually on is restored
+    // and the argument — still sitting in the back stack entry, and still Permissions — is
+    // ignored. Re-applying it from a LaunchedEffect(startAt) instead would behave identically
+    // until the first rotation and then throw the user back to the screen they had left.
+    var screen by rememberSaveable { mutableStateOf(startScreen(startAt)) }
     var editingProviderId by rememberSaveable { mutableStateOf<String?>(null) }
     // Bumped on every entry into the editor so each visit gets its own ViewModel rather than
     // inheriting the previous provider's half-typed form.
@@ -335,7 +369,7 @@ private fun SettingsRootScreen(
                 "ArcX has no account and no server of its own. Your workflows and keys stay on " +
                     "this device, and your text goes only to the AI provider you connected.",
             )
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(Spacing.Xxl))
         }
     }
 }

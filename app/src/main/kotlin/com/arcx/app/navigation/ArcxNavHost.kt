@@ -52,6 +52,8 @@ import com.arcx.core.designsystem.theme.pushExit
 import com.arcx.feature.discover.DiscoverRoute
 import com.arcx.feature.history.HistoryRoute
 import com.arcx.feature.home.HomeRoute
+import com.arcx.feature.home.SurfaceSubject
+import com.arcx.feature.settings.SettingsDestination
 import com.arcx.feature.settings.SettingsRoute
 import com.arcx.feature.workflow.WorkflowEditorRoute
 import com.arcx.feature.workflow.WorkflowListRoute
@@ -87,7 +89,45 @@ private val NavBackStackEntry.isTopLevel: Boolean
 private const val EDITOR_ROUTE = "editor"
 private const val EDITOR_ARG = "workflowId"
 private const val SETTINGS_ROUTE = "settings"
-private const val SETTINGS_ARG = "entryPoints"
+private const val SETTINGS_ARG = "startAt"
+
+/**
+ * Settings is one destination with an optional argument, not one route per screen — the same shape
+ * as the editor above it. Every screen inside Settings is reached by [SettingsRoute]'s own router,
+ * so this NavHost keeps seeing a single non-tab route and [isLateral] keeps deciding the
+ * transition. A route per settings screen would still animate correctly today, but it would put
+ * the choice of transition one refactor away from being made somewhere other than that check.
+ */
+internal fun settingsRoute(destination: SettingsDestination?): String =
+    if (destination == null) SETTINGS_ROUTE else "$SETTINGS_ROUTE?$SETTINGS_ARG=${destination.name}"
+
+/**
+ * An unrecognised argument opens the Settings index rather than throwing — a route string is the
+ * one part of this that a rename can silently invalidate, and the index is a survivable landing.
+ * The same `runCatching { enumValueOf }` the settings store uses when reading a persisted enum.
+ */
+internal fun settingsDestinationFrom(argument: String?): SettingsDestination? =
+    argument?.let { runCatching { enumValueOf<SettingsDestination>(it) }.getOrNull() }
+
+/**
+ * Which Settings screen owns a surface today.
+ *
+ * This mapping is the join between two vocabularies that are allowed to move independently: Home
+ * names the subject its chip reports on, Settings names the screens it will let itself be opened
+ * at, and neither module can see the other. It lives here because :app is the only place that can
+ * see both — and because when a control moves between Settings screens, as the accessibility grant
+ * just did from Entry points to Permissions, this is the only line that should have to change.
+ */
+internal fun settingsDestinationFor(subject: SurfaceSubject): SettingsDestination = when (subject) {
+    // The switch that turns the sidebar on, and the rows that describe the two surfaces the
+    // manifest guarantees, are all on Entry points.
+    SurfaceSubject.SIDEBAR, SurfaceSubject.SHARE, SurfaceSubject.SELECTION ->
+        SettingsDestination.ENTRY_POINTS
+    // The accessibility grant, which is what "Screen text off" is actually reporting. Entry points
+    // only has a button pointing here now, so sending the chip there costs a second tap to reach
+    // the control the chip exists to be.
+    SurfaceSubject.SCREEN_TEXT -> SettingsDestination.PERMISSIONS
+}
 
 @Composable
 fun ArcxNavHost(
@@ -188,9 +228,9 @@ fun ArcxNavHost(
                         onCreateWorkflow = { openEditor(null) },
                         onSeeAllWorkflows = { openTab(TopLevelDestination.LIBRARY) },
                         onSeeActivity = { openTab(TopLevelDestination.ACTIVITY) },
-                        onOpenSettings = { navController.navigate(SETTINGS_ROUTE) },
-                        onOpenEntryPoints = {
-                            navController.navigate("$SETTINGS_ROUTE?$SETTINGS_ARG=true")
+                        onOpenSettings = { navController.navigate(settingsRoute(null)) },
+                        onOpenSurfaceSettings = { subject ->
+                            navController.navigate(settingsRoute(settingsDestinationFor(subject)))
                         },
                     )
                 }
@@ -215,14 +255,18 @@ fun ArcxNavHost(
                     route = "$SETTINGS_ROUTE?$SETTINGS_ARG={$SETTINGS_ARG}",
                     arguments = listOf(
                         navArgument(SETTINGS_ARG) {
-                            type = NavType.BoolType
-                            defaultValue = false
+                            // The enum name as a string rather than NavType.EnumType, which cannot
+                            // be nullable and so would need a "none" entry in SettingsDestination
+                            // that means "do not deep-link" — a destination that is not one.
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
                         },
                     ),
                 ) { entry ->
                     SettingsRoute(
                         onBack = { navController.popBackStack() },
-                        startAtEntryPoints = entry.arguments?.getBoolean(SETTINGS_ARG) == true,
+                        startAt = settingsDestinationFrom(entry.arguments?.getString(SETTINGS_ARG)),
                     )
                 }
 

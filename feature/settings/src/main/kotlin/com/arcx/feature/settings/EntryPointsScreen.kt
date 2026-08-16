@@ -45,7 +45,6 @@ import com.arcx.core.designsystem.component.NoticeCard
 import com.arcx.core.designsystem.component.NoticeSeverity
 import com.arcx.core.designsystem.component.SectionHeader
 import com.arcx.core.designsystem.component.TintedIcon
-import com.arcx.core.designsystem.theme.MetaTextStyle
 import com.arcx.core.designsystem.theme.Spacing
 
 /**
@@ -421,16 +420,26 @@ private fun SurfaceRow(
 }
 
 /**
- * `onSurfaceVariant`, not `outline`. Measured on this theme, 11sp Medium on `surfaceContainerLow`
+ * What stands in for a switch on the two rows that have nothing to switch.
+ *
+ * `labelMedium`, not `MetaTextStyle`. That style is monospace and reserved for what the engine
+ * reads or reports — a duration, a model id, a `{{variable}}` — so that a glance separates machine
+ * facts from prose. "built in" is prose: it is this screen telling the user, in its own voice, that
+ * the manifest declares these two and no permission or switch is involved. In monospace it read as
+ * a value ArcX had gone and looked up, and it was visibly a different typeface from every other
+ * word on the screen.
+ *
+ * `onSurfaceVariant`, not `outline`. Measured on this theme, small text on `surfaceContainerLow`
  * read 4.05:1 in light mode against a 4.5:1 requirement — it is under the large-text threshold, so
  * the 3:1 allowance does not apply. `outline` is an M3 *boundary* role, specified for 3:1 dividers
- * and never correct for text. WorkflowPanel made the same swap for the same reason.
+ * and never correct for text. WorkflowPanel made the same swap for the same reason. The type change
+ * only helps that: 12sp Medium where it was 11sp Medium, same colour on the same surface.
  */
 @Composable
 private fun BuiltInBadge() {
     Text(
         text = "built in",
-        style = MetaTextStyle,
+        style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(end = Spacing.Xs),
     )

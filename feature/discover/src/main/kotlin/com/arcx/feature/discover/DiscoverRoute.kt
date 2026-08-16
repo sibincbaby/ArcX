@@ -366,7 +366,12 @@ private fun StartHereCard(spec: WorkflowSpec, onClick: () -> Unit) {
                 // "Selected text → Bottom sheet" to nothing worth reading.
                 text = "${spec.input.shortLabel} → ${spec.output.shortLabel}",
                 style = MetaTextStyle,
-                color = MaterialTheme.colorScheme.outline,
+                // The same wiring line the gallery rows draw in [WiringChips], and the same
+                // colour, for the same reason: at `outline` this measured 4.05:1 over the plain
+                // end of the card's gradient and 3.37:1 over the tinted end, against the 4.5 that
+                // 11sp text needs. It is already the quiet line on the card by being small,
+                // monospace and second under the name.
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -463,11 +468,17 @@ private fun InstallButton(installed: Boolean, busy: Boolean, onInstall: () -> Un
                 Icon(
                     imageVector = Icons.Outlined.Check,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.outline,
+                    // The tick was never the failing half — an icon is held to 3:1, and it
+                    // cleared that at `outline`. It moves with the label anyway, because a pill
+                    // whose tick and word are different greys reads as two things.
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(15.dp),
                 )
             },
-            content = MaterialTheme.colorScheme.outline,
+            // `outline` measured 4.26:1 here, under the 4.5 the label needs. It stays the quiet
+            // end of the row by being neutral against Install's `primary` — a done state should
+            // let the eye skip it — which is a difference of hue, not of legibility.
+            content = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         return
     }

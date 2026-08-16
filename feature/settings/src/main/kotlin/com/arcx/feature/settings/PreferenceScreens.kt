@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloseFullscreen
 import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.OpenInFull
@@ -244,7 +245,12 @@ internal fun AppearanceScreen(
                     enabled = sidebarLive,
                 )
                 SettingsSwitchRow(
-                    title = "Compact list everywhere else",
+                    // "Compact list everywhere else" wrapped to two lines and stranded "else" on
+                    // the second. Shortened rather than given the row more width: the title column
+                    // is what every settings row on every screen gets, and a row title that only
+                    // fits by taking space from the switch beside it is a title that will wrap
+                    // again at the next font scale. The subtitle names the "elsewhere" anyway.
+                    title = "Compact list elsewhere",
                     subtitle = "Drops the search box from the tile, share sheet, shortcuts and " +
                         "the drawer icon, so they match the sidebar's panel.",
                     icon = Icons.Outlined.CloseFullscreen,
@@ -252,7 +258,7 @@ internal fun AppearanceScreen(
                     onCheckedChange = onCompactPickerChange,
                 )
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(Spacing.Xxl))
         }
     }
 }
@@ -291,10 +297,16 @@ private fun SidebarSideRow(side: SidebarSide, onSideChange: (SidebarSide) -> Uni
             }
         }
         Spacer(Modifier.height(Spacing.Sm))
+        // Says which edge ships selected, not which edge is selected. As "Left to begin with,
+        // because…" it sat under a control reading "Right" and described it — the only line on
+        // this screen that changed meaning depending on the setting above it, while being the
+        // one line that never changes. The reason is worth keeping: it is why the default is
+        // what it is, and it is also the warning for anyone about to move the strip to the right.
         Text(
-            text = "Left to begin with, because the right edge is usually taken — Samsung's own " +
-                "Edge panel handle lives there and is on out of the box. Two handles on one edge " +
-                "means one inward swipe and two things expecting it.",
+            text = "Either edge works. Left is the default because the right one is usually " +
+                "already taken — Samsung's own Edge panel handle lives there and is on out of " +
+                "the box, and two handles on one edge means one inward swipe with two things " +
+                "expecting it.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -380,6 +392,10 @@ internal fun PrivacyScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
+            // Named, like every other group on this screen and on the four screens beside it. It
+            // was the one group introduced by nothing but the app bar, which read as the app bar
+            // labelling it — "Privacy & data" over two rows that are only about runs.
+            SectionHeader("Run history")
             SettingsGroup {
                 SettingsSwitchRow(
                     title = "Save run history",
@@ -391,6 +407,13 @@ internal fun PrivacyScreen(
                 SettingsRow(
                     title = "Clear history",
                     subtitle = "Delete every recorded run.",
+                    // Every row in a group carries an icon or none of them does — the rule the
+                    // retention group below (none) and Appearance's workflow-list group (both)
+                    // already follow. This row had none while the switch above it did, which put
+                    // two titles in one card 20dp apart. Icon rather than no icon because every
+                    // other action on this screen has one, and dropping the switch's would leave
+                    // Privacy the only settings card whose rows start at the card edge.
+                    icon = Icons.Outlined.DeleteSweep,
                     onClick = { confirmClear = true },
                 )
             }
@@ -465,7 +488,7 @@ internal fun PrivacyScreen(
                     "deleting it deletes it. The only thing that ever leaves this device is the " +
                     "text you send to the AI provider you configured, and it goes straight there.",
             )
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(Spacing.Xxl))
         }
     }
 
@@ -550,7 +573,7 @@ internal fun AboutScreen(onBack: () -> Unit) {
                     subtitle = "Not published yet — links land with the first public build.",
                 )
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(Spacing.Xxl))
         }
     }
 }
