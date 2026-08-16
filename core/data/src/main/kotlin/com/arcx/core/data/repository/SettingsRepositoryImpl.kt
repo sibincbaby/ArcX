@@ -5,10 +5,13 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.arcx.core.data.di.SettingsDataStore
 import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.model.ScreenshotRetention
+import com.arcx.core.model.SidebarSide
 import com.arcx.core.model.ThemePreference
 import com.arcx.core.model.UserSettings
 import kotlinx.coroutines.flow.Flow
@@ -41,6 +44,14 @@ internal class SettingsRepositoryImpl @Inject constructor(
             prefs[Keys.BUBBLE_OPENS_FULL_LIST] = updated.bubbleOpensFullList
             prefs[Keys.COMPACT_PICKER] = updated.compactPicker
             prefs[Keys.SCREENSHOT_RETENTION] = updated.screenshotRetention.name
+            // The sidebar's four numbers are clamped on the way in as well as on the way out.
+            // Clamping only on read would let a slider store 400dp and read back 200, so the next
+            // thing to write the settings would round-trip a value the user never sees.
+            prefs[Keys.SIDEBAR_SIDE] = updated.sidebarSide.name
+            prefs[Keys.SIDEBAR_VERTICAL_PERCENT] = updated.sidebarVerticalPercent.coerceIn(0f, 1f)
+            prefs[Keys.SIDEBAR_LENGTH_DP] = updated.sidebarLengthDp.coerceLength()
+            prefs[Keys.SIDEBAR_WIDTH_DP] = updated.sidebarWidthDp.coerceWidth()
+            prefs[Keys.SIDEBAR_OPACITY] = updated.sidebarOpacity.coerceIn(0f, 1f)
             val defaultProvider = updated.defaultProviderId
             if (defaultProvider == null) prefs.remove(Keys.DEFAULT_PROVIDER_ID)
             else prefs[Keys.DEFAULT_PROVIDER_ID] = defaultProvider
@@ -65,8 +76,25 @@ internal class SettingsRepositoryImpl @Inject constructor(
             screenshotRetention = this[Keys.SCREENSHOT_RETENTION]
                 ?.let { runCatching { enumValueOf<ScreenshotRetention>(it) }.getOrNull() }
                 ?: defaults.screenshotRetention,
+            sidebarSide = this[Keys.SIDEBAR_SIDE]
+                ?.let { runCatching { enumValueOf<SidebarSide>(it) }.getOrNull() }
+                ?: defaults.sidebarSide,
+            sidebarVerticalPercent = this[Keys.SIDEBAR_VERTICAL_PERCENT]?.coerceIn(0f, 1f)
+                ?: defaults.sidebarVerticalPercent,
+            // Clamped on read too, because a preferences file can also arrive from a restore or
+            // from a hand edit, and an over-long strip is a gesture the user cannot make.
+            sidebarLengthDp = this[Keys.SIDEBAR_LENGTH_DP]?.coerceLength()
+                ?: defaults.sidebarLengthDp,
+            sidebarWidthDp = this[Keys.SIDEBAR_WIDTH_DP]?.coerceWidth() ?: defaults.sidebarWidthDp,
+            sidebarOpacity = this[Keys.SIDEBAR_OPACITY]?.coerceIn(0f, 1f) ?: defaults.sidebarOpacity,
         )
     }
+
+    private fun Int.coerceLength(): Int =
+        coerceIn(UserSettings.SIDEBAR_MIN_LENGTH_DP, UserSettings.SIDEBAR_MAX_LENGTH_DP)
+
+    private fun Int.coerceWidth(): Int =
+        coerceIn(UserSettings.SIDEBAR_MIN_WIDTH_DP, UserSettings.SIDEBAR_MAX_WIDTH_DP)
 
     private object Keys {
         val THEME = stringPreferencesKey("theme")
@@ -78,5 +106,10 @@ internal class SettingsRepositoryImpl @Inject constructor(
         val BUBBLE_OPENS_FULL_LIST = booleanPreferencesKey("bubble_opens_full_list")
         val COMPACT_PICKER = booleanPreferencesKey("compact_picker")
         val SCREENSHOT_RETENTION = stringPreferencesKey("screenshot_retention")
+        val SIDEBAR_SIDE = stringPreferencesKey("sidebar_side")
+        val SIDEBAR_VERTICAL_PERCENT = floatPreferencesKey("sidebar_vertical_percent")
+        val SIDEBAR_LENGTH_DP = intPreferencesKey("sidebar_length_dp")
+        val SIDEBAR_WIDTH_DP = intPreferencesKey("sidebar_width_dp")
+        val SIDEBAR_OPACITY = floatPreferencesKey("sidebar_opacity")
     }
 }

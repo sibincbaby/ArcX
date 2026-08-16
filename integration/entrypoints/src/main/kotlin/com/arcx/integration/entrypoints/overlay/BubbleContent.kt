@@ -7,21 +7,22 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.arcx.core.designsystem.component.PanelListMaxHeight
@@ -34,30 +35,62 @@ import com.arcx.core.designsystem.theme.Motion
 import com.arcx.core.designsystem.theme.PanelScrim
 import com.arcx.core.designsystem.theme.panelEnter
 import com.arcx.core.designsystem.theme.tint
+import com.arcx.core.model.SidebarSide
 import com.arcx.core.model.Workflow
 import com.arcx.integration.entrypoints.R
 
-/** Matches the collapsed window size the touch handling assumes when snapping to an edge. */
-internal val BubbleSize = 56.dp
+/**
+ * How wide the collapsed overlay window is, whatever width the strip is drawn at.
+ *
+ * These are two different numbers on purpose. Android delivers a whole gesture to whichever window
+ * was under the ACTION_DOWN, so the window has to be wide enough to put a thumb on before any of
+ * the swipe handling downstream gets a chance to run — at the 6dp default the drawn strip is a
+ * hairline, and a window that size is effectively unswipeable. So the window stays a full 48dp, the
+ * platform's minimum touch target, and the strip is drawn against its docked edge inside it.
+ */
+internal val SidebarTouchWidth = 48.dp
 
 /**
- * The collapsed handle. It has no click or drag modifier on purpose — the gesture is owned by the
- * hosting View, which is the only layer that can see raw screen coordinates while the window it is
- * attached to moves underneath the finger.
+ * The collapsed strip: a thin bar welded to one screen edge.
+ *
+ * It has no click or drag modifier on purpose — the gesture is owned by the hosting View, which is
+ * the only layer that can see raw screen coordinates and the only one that can tell an inward swipe
+ * from a stray drag before Compose has decided the touch belongs to it.
+ *
+ * It fills the window and aligns itself to the docked edge rather than sizing the window to the
+ * drawing, so the gap between [SidebarTouchWidth] and [widthDp] stays touchable but invisible.
  */
 @Composable
-internal fun BubbleHandle(modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier.size(BubbleSize),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        shadowElevation = 6.dp,
-        tonalElevation = 6.dp,
+internal fun SidebarStrip(
+    side: SidebarSide,
+    widthDp: Int,
+    opacity: Float,
+    modifier: Modifier = Modifier,
+) {
+    val docked = side == SidebarSide.LEFT
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = if (docked) Alignment.CenterStart else Alignment.CenterEnd,
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(text = "✦", style = MaterialTheme.typography.titleLarge)
-        }
+        Surface(
+            modifier = Modifier
+                .width(widthDp.dp)
+                .fillMaxHeight()
+                // The alpha is on the drawing and nowhere else. Putting it on the window would fade
+                // the panel with it, and the touch region has no opacity to fade in the first
+                // place — a transparent overlay still takes every touch that lands on it.
+                .alpha(opacity),
+            // Square against the screen edge, rounded on the side the user can see, so a strip
+            // reads as part of the edge rather than as a floating tab that has drifted into it.
+            shape = if (docked) {
+                RoundedCornerShape(topEndPercent = 50, bottomEndPercent = 50)
+            } else {
+                RoundedCornerShape(topStartPercent = 50, bottomStartPercent = 50)
+            },
+            color = MaterialTheme.colorScheme.primary,
+            shadowElevation = 2.dp,
+            content = {},
+        )
     }
 }
 

@@ -12,10 +12,14 @@
       points cannot disagree about what the permission does. See the comment there.
     -->
 
-    <string name="arcx_bubble_channel_name">Floating bubble</string>
-    <string name="arcx_bubble_channel_description">Silent notification shown while the ArcX bubble is on screen. Android requires it.</string>
-    <string name="arcx_bubble_notification_title">ArcX bubble is on</string>
-    <string name="arcx_bubble_notification_text">Tap the bubble to run a workflow from any app.</string>
+    <!--
+      The names still read arcx_bubble_* because the setting that switches this on is still
+      bubbleEnabled, and one of the two had to stay put. The wording follows the surface.
+    -->
+    <string name="arcx_bubble_channel_name">Edge sidebar</string>
+    <string name="arcx_bubble_channel_description">Silent notification shown while the ArcX sidebar is on screen. Android requires it.</string>
+    <string name="arcx_bubble_notification_title">ArcX sidebar is on</string>
+    <string name="arcx_bubble_notification_text">Tap or swipe the edge strip to run a workflow from any app.</string>
     <string name="arcx_bubble_stop">Stop</string>
     <string name="arcx_bubble_title">Run on this app</string>
     <!-- What the panel will feed the workflow if the launch carries no text of its own. -->

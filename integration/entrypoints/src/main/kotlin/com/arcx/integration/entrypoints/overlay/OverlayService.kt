@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import com.arcx.core.designsystem.theme.ThemeMode
 import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.domain.repository.WorkflowRepository
+import com.arcx.core.model.SidebarSide
 import com.arcx.core.model.ThemePreference
 import com.arcx.integration.entrypoints.ArcxDeepLinks
 import com.arcx.integration.entrypoints.R
@@ -44,10 +45,10 @@ private const val CHANNEL_ID = "arcx_bubble"
 private const val NOTIFICATION_ID = 4201
 
 /**
- * Hosts the floating bubble for as long as the user leaves it switched on.
+ * Hosts the edge sidebar for as long as the user leaves it switched on.
  *
  * It has to be a foreground service: an overlay owned by a background process is killed within
- * minutes, and the bubble's whole promise is that it is there when you reach for it.
+ * minutes, and the sidebar's whole promise is that it is there when you reach for it.
  */
 @AndroidEntryPoint
 class OverlayService : Service() {
@@ -150,6 +151,33 @@ class OverlayService : Service() {
                 .map { it.theme.toThemeMode() to it.dynamicColor }
                 .distinctUntilChanged()
                 .collect { (mode, dynamic) -> bubble.updateTheme(mode, dynamic) }
+        }
+
+        // Which edge the strip is on, where down it, and how big — same reason as the theme above:
+        // an overlay has no Activity to read settings for itself. One collector for all five
+        // because four of them end in the same WindowManager layout pass, and distinctUntilChanged
+        // over the group is what keeps an unrelated settings edit from causing one.
+        scope.launch {
+            settingsRepository.settings
+                .map {
+                    SidebarLook(
+                        side = it.sidebarSide,
+                        verticalPercent = it.sidebarVerticalPercent,
+                        lengthDp = it.sidebarLengthDp,
+                        widthDp = it.sidebarWidthDp,
+                        opacity = it.sidebarOpacity,
+                    )
+                }
+                .distinctUntilChanged()
+                .collect { look ->
+                    bubble.updateSidebar(
+                        side = look.side,
+                        verticalPercent = look.verticalPercent,
+                        lengthDp = look.lengthDp,
+                        widthDp = look.widthDp,
+                        opacity = look.opacity,
+                    )
+                }
         }
     }
 
@@ -283,6 +311,18 @@ class OverlayService : Service() {
         }
     }
 }
+
+/**
+ * The five sidebar settings travelling together, so one collector can watch all of them and
+ * `distinctUntilChanged` can compare them as a group.
+ */
+private data class SidebarLook(
+    val side: SidebarSide,
+    val verticalPercent: Float,
+    val lengthDp: Int,
+    val widthDp: Int,
+    val opacity: Float,
+)
 
 /**
  * The stored preference is `:core:model`, the theme's input is `:core:designsystem`, and neither

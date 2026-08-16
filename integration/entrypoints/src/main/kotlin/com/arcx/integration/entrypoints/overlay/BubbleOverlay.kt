@@ -1,8 +1,8 @@
 package com.arcx.integration.entrypoints.overlay
 
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.os.Build
 import android.util.DisplayMetrics
 import android.view.Gravity
@@ -16,21 +16,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.core.animation.doOnEnd
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.arcx.core.designsystem.theme.ArcXTheme
 import com.arcx.core.designsystem.theme.ThemeMode
+import com.arcx.core.model.SidebarSide
+import com.arcx.core.model.UserSettings
 import com.arcx.core.model.Workflow
-import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 
-private const val SNAP_DURATION_MS = 180L
-
 /**
- * How long SurfaceFlinger is given to get the bubble-less frame onto the display after the view
+ * How long SurfaceFlinger is given to get the strip-less frame onto the display after the view
  * hierarchy has handed it over. One frame at 60Hz, and the display is the only party left that has
  * not confirmed anything — `registerFrameCommitCallback` says the frame reached the compositor, not
  * that it was composited.
@@ -40,17 +38,22 @@ private const val COMPOSITE_SETTLE_MS = 16L
 /**
  * Ceiling on how long the panel is held back waiting for a frame grab. Nothing should get close to
  * it — a grab is tens of milliseconds — but a callback that never arrives would otherwise leave the
- * bubble invisible and the panel unopened, which is the one failure the user cannot recover from.
+ * strip invisible and the panel unopened, which is the one failure the user cannot recover from.
  */
 private const val FRAME_GRAB_TIMEOUT_MS = 500L
 
 /**
- * The floating bubble: one overlay window that is a small circle most of the time and the whole
- * screen while its panel is open.
+ * The sidebar: one overlay window that is a thin strip docked to a screen edge most of the time,
+ * and the whole screen while its panel is open.
  *
  * One window rather than two, because the two-window version has to keep their positions and
  * z-order in sync and still ends up toggling the same focus flag. Collapsing and expanding here is
  * a size change plus a flag change on the same [WindowManager.LayoutParams].
+ *
+ * It replaced a draggable circle. The circle owned its own position, which meant snapping to an
+ * edge, correcting itself back on screen after a rotation, and telling a drag from a tap on every
+ * touch. None of that exists now: the strip is where the settings say it is, and every gesture that
+ * starts on it means the same thing.
  */
 internal class BubbleOverlay(
     private val context: Context,
@@ -59,14 +62,14 @@ internal class BubbleOverlay(
     /** Fired the instant the tap resolves — the last moment the app underneath is still readable. */
     private val onExpanded: () -> Unit = {},
     /**
-     * Whether a pixel capture is worth blanking the bubble and delaying the panel for. Answers no
+     * Whether a pixel capture is worth blanking the strip and delaying the panel for. Answers no
      * on old platforms, without the accessibility service, and while the platform's capture
      * interval has not elapsed.
      */
     private val canCaptureImage: () -> Boolean = { false },
     /**
      * Grabs a frame of the screen. The callback lands on the main thread once the pixels are off
-     * the display, which is the moment the bubble may be drawn again — not when the image has
+     * the display, which is the moment the strip may be drawn again — not when the image has
      * finished encoding.
      */
     private val captureImage: (onGrabbed: () -> Unit) -> Unit = { it() },
@@ -82,7 +85,7 @@ internal class BubbleOverlay(
     private var content: View? = null
 
     /**
-     * Owns the collapsed bubble's tap and drag.
+     * Owns the collapsed strip's tap and swipe.
      *
      * The gesture has to live on a parent of the ComposeView rather than on a touch listener
      * attached to it. A ComposeView is a ViewGroup, and a ViewGroup only consults its
@@ -90,19 +93,25 @@ internal class BubbleOverlay(
      * consumes the stream, so `setOnTouchListener` on a ComposeView is silently never called.
      * That is what made the bubble inert: the tap was delivered to the window and then dropped.
      *
+     * Kept for the sidebar, not inherited by accident. A swipe cannot be recognised from anything
+     * Compose exposes here either — the finger leaves this window within a few pixels of the
+     * ACTION_DOWN, and raw MotionEvent coordinates are the only thing that still describes it once
+     * it has.
+     *
      * While expanded we stop intercepting, so the panel's own Compose gestures work normally.
      */
     private inner class GestureHost(context: Context) : FrameLayout(context) {
         override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = !expanded
 
-        override fun onTouchEvent(ev: MotionEvent): Boolean = onBubbleTouch(this, ev)
+        override fun onTouchEvent(ev: MotionEvent): Boolean = onStripTouch(ev)
 
         override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
             super.onLayout(changed, l, t, r, b)
-            if (!expanded) pullOnScreen(this)
+            // Here rather than next to the layout call: this is the one place the view's real size
+            // is known, and it runs again for free on every settings change and every rotation.
+            updateGestureExclusion(this)
         }
     }
-    private var snapAnimator: ValueAnimator? = null
 
     private var expanded by mutableStateOf(false)
 
@@ -113,27 +122,41 @@ internal class BubbleOverlay(
     /**
      * Mirrors UserSettings.theme and UserSettings.dynamicColor; see [updateTheme]. Compose state
      * rather than plain fields, unlike [opensFullList], because these are read during composition
-     * and a settings change has to repaint the bubble where it stands.
+     * and a settings change has to repaint the strip where it stands.
      */
     private var themeMode by mutableStateOf(ThemeMode.SYSTEM)
     private var dynamicColor by mutableStateOf(true)
 
+    /**
+     * The user's sidebar geometry; see [updateSidebar].
+     *
+     * The first three are Compose state because they are read while drawing the strip. The last two
+     * only ever reach the window's layout params, which are not Compose's business — making them
+     * state as well would invalidate a composition that cannot see the difference.
+     */
+    private var side by mutableStateOf(DEFAULTS.sidebarSide)
+    private var stripWidthDp by mutableStateOf(DEFAULTS.sidebarWidthDp)
+    private var opacity by mutableStateOf(DEFAULTS.sidebarOpacity)
+    private var lengthDp = DEFAULTS.sidebarLengthDp
+    private var verticalPercent = DEFAULTS.sidebarVerticalPercent
+
     /** True from the tap until the panel actually opens, while a frame grab is in flight. */
     private var expanding = false
 
-    /** Where the bubble sits when collapsed; preserved across expand/collapse. */
-    private var collapsedX = 0
-    private var collapsedY = 0
-
     private var downRawX = 0f
     private var downRawY = 0f
-    private var downParamX = 0
-    private var downParamY = 0
-    private var dragging = false
+
+    /** Set once the gesture has committed to opening, so ACTION_UP does not open it a second time. */
+    private var swiped = false
+
+    /** Set once the gesture has moved far enough to no longer be a tap. */
+    private var strayed = false
 
     private val params = WindowManager.LayoutParams(
-        WindowManager.LayoutParams.WRAP_CONTENT,
-        WindowManager.LayoutParams.WRAP_CONTENT,
+        // Sized explicitly rather than WRAP_CONTENT: the window is deliberately wider than the
+        // strip drawn inside it, so there is nothing to wrap to.
+        touchWidthPx(),
+        lengthPx(),
         // The only overlay type a normal app may use since Oreo; TYPE_PHONE and friends are gone.
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
         COLLAPSED_FLAGS,
@@ -158,7 +181,7 @@ internal class BubbleOverlay(
      * The user's theme, pushed in from the service like the workflows are.
      *
      * The overlay cannot read it for itself: there is no Activity and no ViewModel here, and the
-     * settings flow lives on the service's scope. Without this the bubble drew whatever the system
+     * settings flow lives on the service's scope. Without this the overlay drew whatever the system
      * happened to be doing, so LIGHT/DARK and the dynamic-colour switch were ignored by the one
      * surface the user sees most often.
      */
@@ -168,18 +191,39 @@ internal class BubbleOverlay(
     }
 
     /**
-     * Adds the bubble to the window manager. Returns false if the overlay permission was revoked
+     * The strip's edge, position and size, pushed in from the service for the same reason the theme
+     * is: there is no Activity here and the settings flow lives on the service's scope.
+     *
+     * All five arrive together because four of them end in the same WindowManager layout pass, and
+     * splitting them would mean up to four passes for one settings screen edit.
+     */
+    fun updateSidebar(
+        side: SidebarSide,
+        verticalPercent: Float,
+        lengthDp: Int,
+        widthDp: Int,
+        opacity: Float,
+    ) {
+        this.side = side
+        this.verticalPercent = verticalPercent
+        this.lengthDp = lengthDp
+        this.stripWidthDp = widthDp
+        this.opacity = opacity
+        // Only while collapsed. Expanded, the window is the whole screen and these values describe
+        // nothing that is on it; collapse() reads them again on the way back.
+        if (view != null && !expanded) applyCollapsedGeometry()
+    }
+
+    /**
+     * Adds the sidebar to the window manager. Returns false if the overlay permission was revoked
      * between the caller's check and this call, which the system reports by throwing.
      */
     fun show(): Boolean {
         if (view != null) return true
 
-        val metrics = screenSize()
-        val bubblePx = (BubbleSize.value * context.resources.displayMetrics.density).roundToInt()
-        collapsedX = metrics.first - bubblePx
-        collapsedY = metrics.second / 3
-        params.x = collapsedX
-        params.y = collapsedY
+        // Safe before the view exists: applyLayout is a no-op until there is a window to update, so
+        // this only fills in the params that addView is about to be handed.
+        applyCollapsedGeometry()
 
         val composeView = ComposeView(context).apply {
             // Owners first, then content, then attach. Compose resolves all three from the view
@@ -211,7 +255,7 @@ internal class BubbleOverlay(
                             onDismiss = ::collapse,
                         )
                     } else {
-                        BubbleHandle()
+                        SidebarStrip(side = side, widthDp = stripWidthDp, opacity = opacity)
                     }
                 }
             }
@@ -225,11 +269,14 @@ internal class BubbleOverlay(
             setViewTreeLifecycleOwner(host)
             setViewTreeViewModelStoreOwner(host)
             setViewTreeSavedStateRegistryOwner(host)
+            // MATCH_PARENT, not WRAP_CONTENT: the drawing has to be able to see the whole touch
+            // window so it can align the strip to the docked edge of it. Wrapping would shrink the
+            // composition to the strip and leave the extra touch width with nothing to align to.
             addView(
                 composeView,
                 FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
                 ),
             )
         }
@@ -245,8 +292,6 @@ internal class BubbleOverlay(
     }
 
     fun hide() {
-        snapAnimator?.cancel()
-        snapAnimator = null
         view?.let { attached ->
             runCatching { windowManager.removeView(attached) }
         }
@@ -259,53 +304,59 @@ internal class BubbleOverlay(
     }
 
     /**
-     * All positioning is done in raw (screen) coordinates.
+     * The two ways in: a tap, and a swipe inward off the edge. Both open the same panel.
      *
-     * The obvious implementation — a Compose drag modifier, or local MotionEvent x/y — feeds back on
-     * itself: moving the window moves the view under the finger, so the next local delta is close
-     * to zero and the bubble crawls. rawX/rawY are screen-absolute and immune to that.
+     * Both, rather than one, because they are the two things a user tries. A strip against the edge
+     * looks like something to pull, and it is also just a button.
+     *
+     * Measured in raw (screen) coordinates. Local MotionEvent x/y are useless here: an inward swipe
+     * is by definition leaving this window, and past its edge the local coordinate stops tracking
+     * the finger. Raw coordinates are screen-absolute and keep describing the gesture after it has
+     * left.
      */
-    private fun onBubbleTouch(v: View, event: MotionEvent): Boolean {
+    private fun onStripTouch(event: MotionEvent): Boolean {
         // While expanded the panel is a normal Compose surface and owns its own gestures.
         if (expanded) return false
 
         return when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                snapAnimator?.cancel()
                 downRawX = event.rawX
                 downRawY = event.rawY
-                downParamX = params.x
-                downParamY = params.y
-                dragging = false
+                swiped = false
+                strayed = false
                 true
             }
 
             MotionEvent.ACTION_MOVE -> {
-                val dx = event.rawX - downRawX
-                val dy = event.rawY - downRawY
-                // Slop is the difference between "I meant to move it" and "I meant to tap it". A
-                // bubble that fires a workflow because the user's thumb travelled two pixels while
-                // repositioning it is worse than no bubble at all.
-                if (!dragging && hypot(dx, dy) > touchSlop) dragging = true
-                if (dragging) {
-                    params.x = downParamX + dx.roundToInt()
-                    params.y = downParamY + dy.roundToInt()
-                    applyLayout()
+                if (!swiped && !strayed) {
+                    val dx = event.rawX - downRawX
+                    val dy = event.rawY - downRawY
+                    // "Inward" is away from the docked edge, so its sign depends on which edge that
+                    // is: rightward off the left edge, leftward off the right one.
+                    val inward = if (side == SidebarSide.LEFT) dx else -dx
+                    when {
+                        // Slop, not a longer distance of its own. The panel is the only outcome
+                        // either gesture has, so opening early costs nothing, and holding out for a
+                        // longer pull would only make the strip feel unresponsive.
+                        inward > touchSlop -> {
+                            swiped = true
+                            expand()
+                        }
+                        // Anything else past the slop was a different gesture — a drag along the
+                        // strip, or a push back out at the edge. Once it has strayed the ACTION_UP
+                        // is no longer a tap, or every abandoned swipe would open the panel anyway.
+                        hypot(dx, dy) > touchSlop -> strayed = true
+                    }
                 }
                 true
             }
 
             MotionEvent.ACTION_UP -> {
-                if (dragging) snapToEdge(v) else expand()
-                dragging = false
+                if (!swiped && !strayed) expand()
                 true
             }
 
-            MotionEvent.ACTION_CANCEL -> {
-                if (dragging) snapToEdge(v)
-                dragging = false
-                true
-            }
+            MotionEvent.ACTION_CANCEL -> true
 
             else -> false
         }
@@ -318,8 +369,6 @@ internal class BubbleOverlay(
     private fun expand() {
         if (expanding || expanded) return
         expanding = true
-        collapsedX = params.x
-        collapsedY = params.y
         // Fired before the frame grab rather than after it: the text read wants the earliest moment
         // it can get and does not care what is drawn, so it must not inherit the grab's delay.
         onExpanded()
@@ -342,14 +391,18 @@ internal class BubbleOverlay(
     }
 
     /**
-     * Blanks the bubble, has a frame of the screen taken, then opens the panel. Returns false when
+     * Blanks the strip, has a frame of the screen taken, then opens the panel. Returns false when
      * there is nothing to take, in which case the caller opens the panel with no delay at all.
      *
      * This is the only moment in ArcX's life when a usable frame exists. `takeScreenshot` captures
      * the composited display, so unlike an accessibility tree walk it cannot be asked to leave ArcX
      * out — whatever is drawn is in the picture. A moment later the panel covers the very screen the
-     * workflow is about to be asked about, and right now the handle is sitting on top of it. So the
+     * workflow is about to be asked about, and right now the strip is sitting on top of it. So the
      * content is hidden for the length of the grab and the panel is held back until it is over.
+     *
+     * The strip is a smaller thing to hide than the circle was, but it is hidden the same way and
+     * for the same reason — a 6dp line down the edge of a screenshot is still ArcX in a picture the
+     * user did not ask ArcX to be in.
      *
      * Hiding the ComposeView rather than the window is deliberate: the window and its surface stay
      * alive and only the content stops being drawn, which is one draw pass. Taking the window down
@@ -376,7 +429,7 @@ internal class BubbleOverlay(
 
         // registerFrameCommitCallback is the only public signal that a specific frame has left the
         // view hierarchy; polling with a fixed delay instead would be either a guess that shows the
-        // handle in the picture or a guess that makes the panel feel slow.
+        // strip in the picture or a guess that makes the panel feel slow.
         drawn.viewTreeObserver.registerFrameCommitCallback {
             drawn.postDelayed({ captureImage { release.run() } }, COMPOSITE_SETTLE_MS)
         }
@@ -388,6 +441,9 @@ internal class BubbleOverlay(
         expanded = true
         params.width = WindowManager.LayoutParams.MATCH_PARENT
         params.height = WindowManager.LayoutParams.MATCH_PARENT
+        // Back to a plain top-left anchor. The panel is the whole screen, so an edge gravity would
+        // only change what x and y mean for no gain.
+        params.gravity = Gravity.TOP or Gravity.START
         params.x = 0
         params.y = 0
         params.flags = EXPANDED_FLAGS
@@ -397,83 +453,72 @@ internal class BubbleOverlay(
     private fun collapse() {
         if (!expanded) return
         expanded = false
-        params.width = WindowManager.LayoutParams.WRAP_CONTENT
-        params.height = WindowManager.LayoutParams.WRAP_CONTENT
-        params.x = collapsedX
-        params.y = collapsedY
         params.flags = COLLAPSED_FLAGS
-        applyLayout()
-    }
-
-    /** Sends the bubble to whichever side edge it is nearer, and keeps it on screen vertically. */
-    private fun snapToEdge(v: View) {
-        val (screenWidth, screenHeight) = screenSize()
-        val width = if (v.width > 0) v.width else 0
-        val height = if (v.height > 0) v.height else 0
-        val targetX = if (params.x + width / 2 < screenWidth / 2) 0 else screenWidth - width
-        params.y = params.y.coerceIn(0, (screenHeight - height).coerceAtLeast(0))
-        applyLayout()
-
-        val from = params.x
-        if (from == targetX) {
-            collapsedX = targetX
-            collapsedY = params.y
-            return
-        }
-
-        snapAnimator?.cancel()
-        snapAnimator = ValueAnimator.ofInt(from, targetX).apply {
-            duration = (SNAP_DURATION_MS * abs(targetX - from) / screenWidth.coerceAtLeast(1))
-                .coerceIn(80L, SNAP_DURATION_MS)
-            addUpdateListener { animation ->
-                params.x = animation.animatedValue as Int
-                applyLayout()
-            }
-            doOnEnd {
-                collapsedX = params.x
-                collapsedY = params.y
-            }
-            start()
-        }
+        applyCollapsedGeometry()
     }
 
     /**
-     * Drags the bubble back inside the display if any of it ended up outside.
+     * Puts the window back where the settings say the strip belongs.
      *
-     * `params.x` is measured from the window's parent frame, which excludes system insets,
-     * while [screenSize] describes the whole display. On a device with a display cutout those
-     * differ, and placing the bubble at `screenWidth - bubbleWidth` pushed all but a sliver of
-     * it past the right edge — visible enough to look fine in a screenshot, too small to hit.
-     * Measuring where the view actually landed is immune to whichever inset is in play, and to
-     * rotation, which changes the inset without any callback of its own.
+     * Docking with gravity rather than a computed x is what keeps it welded to the edge. The
+     * draggable bubble had to place itself at `screenWidth - width` and then correct itself in
+     * onLayout, because `params.x` is measured from the window's parent frame while [screenSize]
+     * describes the whole display — on a device with a cutout those differ, and the right-edge
+     * position was off by an inset that only exists in some rotations. `Gravity.END` is the same
+     * intent stated in a way the window manager resolves itself, so there is nothing left to
+     * correct and no rotation callback to miss.
      */
-    private fun pullOnScreen(v: View) {
-        if (v.width == 0 || v.height == 0) return
-        val (screenWidth, screenHeight) = screenSize()
-        val location = IntArray(2).also { v.getLocationOnScreen(it) }
+    private fun applyCollapsedGeometry() {
+        val (_, screenHeight) = screenSize()
+        val length = lengthPx()
+        params.width = touchWidthPx()
+        params.height = length
+        params.gravity = Gravity.TOP or
+            if (side == SidebarSide.LEFT) Gravity.START else Gravity.END
+        params.x = 0
+        // The setting names the strip's centre — the part of it a user aims at — and the window
+        // wants its top edge. Clamped so a percent near 0 or 1 shortens nothing and hides nothing.
+        params.y = (screenHeight * verticalPercent - length / 2f).roundToInt()
+            .coerceIn(0, (screenHeight - length).coerceAtLeast(0))
+        applyLayout()
+    }
 
-        var x = params.x
-        var y = params.y
-        if (location[0] + v.width > screenWidth) x -= (location[0] + v.width) - screenWidth
-        if (location[0] < 0) x -= location[0]
-        if (location[1] + v.height > screenHeight) y -= (location[1] + v.height) - screenHeight
-        if (location[1] < 0) y -= location[1]
-        if (x == params.x && y == params.y) return
-
-        params.x = x
-        params.y = y
-        collapsedX = x
-        collapsedY = y
-        // Posted rather than applied inline: this runs from onLayout, and updating the window
-        // synchronously from there re-enters layout.
-        v.post { applyLayout() }
+    /**
+     * Asks the platform to keep its own edge gestures off the sidebar.
+     *
+     * On a gesture-navigation device the system owns a strip down both screen edges for the back
+     * gesture, and it owns it first: a swipe that starts there is consumed by the system and never
+     * reaches this window. That is precisely the swipe the sidebar is listening for, so without an
+     * exclusion the inward swipe would be a back press on every gesture-nav device.
+     *
+     * The rect is the whole window rather than only the drawn strip. What has to be excluded is
+     * where a finger may come down, and that is the full 48dp touch width — for exactly the reason
+     * the window is that wide in the first place.
+     *
+     * The platform grants **at most 200dp of exclusion per screen edge** and silently ignores the
+     * rest, which is what caps `UserSettings.SIDEBAR_MAX_LENGTH_DP` at 200: a longer strip would
+     * have a stretch that the back gesture still wins.
+     */
+    private fun updateGestureExclusion(v: View) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        // Nothing to protect while expanded: the window covers the screen, the panel is dismissed
+        // by a tap rather than a swipe, and asking to exclude all of it would be a request the
+        // platform mostly refuses anyway.
+        v.systemGestureExclusionRects =
+            if (expanded) emptyList() else listOf(Rect(0, 0, v.width, v.height))
     }
 
     private fun applyLayout() {
         val attached = view ?: return
-        // Throws once the view has been removed, which races with a fling that is still animating.
+        // Throws once the view has been removed, which races with a settings change in flight.
         runCatching { windowManager.updateViewLayout(attached, params) }
     }
+
+    private fun touchWidthPx(): Int = dpToPx(SidebarTouchWidth.value)
+
+    private fun lengthPx(): Int = dpToPx(lengthDp.toFloat())
+
+    private fun dpToPx(dp: Float): Int = (dp * context.resources.displayMetrics.density).roundToInt()
 
     private fun screenSize(): Pair<Int, Int> =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -486,21 +531,40 @@ internal class BubbleOverlay(
         }
 
     private companion object {
+
         /**
-         * NOT_TOUCH_MODAL lets touches outside the bubble reach the app behind it, and
-         * LAYOUT_NO_LIMITS lets the user park it over the status bar or gesture area rather than
-         * having it snap back inside the safe insets.
+         * What the strip is drawn with until the first settings emission arrives — which is a real
+         * moment, not a theoretical one: the service adds the window and only then starts
+         * collecting. Taken from the model so the defaults are stated in exactly one place.
+         */
+        val DEFAULTS = UserSettings()
+
+        /**
+         * NOT_TOUCH_MODAL lets touches outside the strip reach the app behind it, and
+         * LAYOUT_NO_LIMITS lets it sit over the status bar and the gesture area rather than being
+         * pushed inside the safe insets — an edge strip that stops short of both ends of the edge
+         * is not docked to anything.
          */
         const val COLLAPSED_FLAGS =
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                // LAYOUT_IN_SCREEN is what makes the vertical setting mean what it says.
+                //
+                // params.y is measured from the window's *parent* frame, and for an overlay that
+                // frame is not the display: dumpsys reported parent=[0,85][1080,2340] on this
+                // device, inset by the status bar. So a strip asked for the middle of a 2340px
+                // screen landed 85px low, and 1.0 would have gone off the bottom by the same
+                // amount. NO_LIMITS does not fix it — it lets the window *extend* past the bars,
+                // not lay out against them — and neither does the modern `fitInsetsTypes = 0`,
+                // which was tried on device and left the parent frame exactly where it was.
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 
         /**
          * Identical to collapsed, and NOT_FOCUSABLE staying on is the important part.
          *
          * Dropping it — the obvious thing to do when a panel appears — silently breaks the feature
-         * the bubble exists for. Measured on device: the moment this window takes focus, Android
+         * the sidebar exists for. Measured on device: the moment this window takes focus, Android
          * stops exposing the app underneath to accessibility entirely. `getWindows()` went from
          * listing Chrome to listing nothing but two system bars and this overlay, so the workflow
          * fell back to a stale snapshot and summarised a toolbar.
