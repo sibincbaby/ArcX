@@ -36,9 +36,16 @@ class FakeWorkflowRepository(
     var seeded = false
 
     override fun observeAll(): Flow<List<Workflow>> = stored.map { it.values.toList() }
-    override fun observeFavorites(): Flow<List<Workflow>> = stored.map { it.values.filter(Workflow::isFavorite) }
-    override fun observePinned(): Flow<List<Workflow>> = stored.map { it.values.filter(Workflow::isPinned) }
-    override fun observeRecent(limit: Int): Flow<List<Workflow>> = stored.map { it.values.take(limit) }
+
+    // Everything but observeAll is a picker feed, so every one of them drops the switched-off —
+    // the same split the Room queries make. A fake that ignored `enabled` would let a test pass
+    // against behaviour the real repository does not have.
+    override fun observeFavorites(): Flow<List<Workflow>> =
+        stored.map { it.values.filter { w -> w.isFavorite && w.enabled } }
+    override fun observePinned(): Flow<List<Workflow>> =
+        stored.map { it.values.filter { w -> w.isPinned && w.enabled } }
+    override fun observeRecent(limit: Int): Flow<List<Workflow>> =
+        stored.map { it.values.filter { w -> w.enabled }.take(limit) }
     override suspend fun get(id: String): Workflow? = stored.value[id]
     override suspend fun upsert(workflow: Workflow) {
         stored.value = stored.value + (workflow.id to workflow)

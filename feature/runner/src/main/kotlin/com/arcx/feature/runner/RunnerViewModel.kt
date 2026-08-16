@@ -88,8 +88,11 @@ class RunnerViewModel @Inject constructor(
     private var started = false
     private var input = WorkflowInput()
 
+    // observeEnabled, not observeAll: this is the picker, and a workflow the user has switched off
+    // must not be offered anywhere they choose something to run. The Library is the one list that
+    // still shows it, because that is where the switch is.
     private val catalog = combine(
-        workflows.observeAll(),
+        workflows.observeEnabled(),
         workflows.observeRecent(),
     ) { all, recent -> Catalog(all, recent, loaded = true) }
         // An empty catalog up front stops a run-by-id from waiting on a database query whose

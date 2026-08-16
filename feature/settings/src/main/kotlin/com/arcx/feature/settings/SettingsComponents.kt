@@ -248,8 +248,15 @@ internal fun SettingsSlider(
     valueRange: ClosedFloatingPointRange<Float>,
     step: Float,
     format: (Float) -> String,
+    /** One line: what the number does. Anything longer than that belongs in [below]. */
     supporting: String,
     onValueChange: (Float) -> Unit,
+    /**
+     * Whatever the [supporting] line deliberately does not say — today, an `ExpandableNote`
+     * explaining a cap. A slot rather than a pair of strings so the note lands inside this
+     * column, indented with the supporting line it belongs to, instead of at the caller's gutter.
+     */
+    below: @Composable () -> Unit = {},
 ) {
     var thumb by remember { mutableFloatStateOf(value) }
     var written by remember { mutableFloatStateOf(value) }
@@ -324,6 +331,7 @@ internal fun SettingsSlider(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        below()
     }
 }
 

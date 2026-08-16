@@ -164,6 +164,7 @@ private class FakeRunDao : RunDao {
 /** Only [touchLastRun] is on the path under test; the rest would be noise if it were called. */
 private class FakeWorkflowDao : WorkflowDao {
     override fun observeAll(): Flow<List<WorkflowEntity>> = unused()
+    override fun observeEnabled(): Flow<List<WorkflowEntity>> = unused()
     override fun observeFavorites(): Flow<List<WorkflowEntity>> = unused()
     override fun observePinned(): Flow<List<WorkflowEntity>> = unused()
     override fun observeRecent(limit: Int): Flow<List<WorkflowEntity>> = unused()
@@ -175,6 +176,7 @@ private class FakeWorkflowDao : WorkflowDao {
     override suspend fun delete(id: String) = unused()
     override suspend fun setFavorite(id: String, favorite: Boolean, now: Long) = unused()
     override suspend fun setPinned(id: String, pinned: Boolean, now: Long) = unused()
+    override suspend fun setEnabled(id: String, enabled: Boolean) = unused()
     override suspend fun touchLastRun(id: String, at: Long) = Unit
 
     private fun unused(): Nothing = error("not part of this test")

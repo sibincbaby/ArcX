@@ -58,6 +58,7 @@ import com.arcx.core.designsystem.theme.Motion
 import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.designsystem.theme.tint
 import com.arcx.core.domain.execution.ExecutionState
+import com.arcx.core.model.AiError
 import com.arcx.core.model.Workflow
 
 /**
@@ -103,13 +104,19 @@ internal fun RunContent(
         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHigh)
 
         when {
-            execution is ExecutionState.Failed -> ErrorCard(
-                title = execution.error.title(),
-                message = execution.error.body(),
-                actionLabel = "Retry",
-                onAction = onRetry,
-                modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Lg),
-            )
+            execution is ExecutionState.Failed -> {
+                // A switched-off workflow is the one failure retrying cannot fix: nothing changes
+                // between one tap and the next, and the fix is on a screen that is not this one.
+                // Offering the button anyway would be a dead end wearing an action's clothes.
+                val retryable = execution.error !is AiError.Disabled
+                ErrorCard(
+                    title = execution.error.title(),
+                    message = execution.error.body(),
+                    actionLabel = "Retry".takeIf { retryable },
+                    onAction = onRetry.takeIf { retryable },
+                    modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Lg),
+                )
+            }
 
             text.isNullOrEmpty() && streaming -> WaitingRow("Working…")
 

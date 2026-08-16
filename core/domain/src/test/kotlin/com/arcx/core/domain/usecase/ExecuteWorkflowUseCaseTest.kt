@@ -99,6 +99,77 @@ class ExecuteWorkflowUseCaseTest {
         assertNull(run.error)
     }
 
+    /**
+     * The guard that makes "off" mean off everywhere at once.
+     *
+     * A switched-off workflow is in no picker, but a pinned launcher shortcut, a widget cell and a
+     * bare `arcx://run/{id}` all outlive that — the launcher keeps a shortcut whether or not ArcX
+     * would still offer what is behind it. Because every entry point ends here, this one check is
+     * what covers all of them; a per-surface check is the second path CLAUDE.md forbids.
+     */
+    @Test
+    fun `a switched-off workflow refuses to run and says which one`() = runTest {
+        val provider = FakeAiProvider(deltas = listOf("Hello"))
+
+        useCase(provider = provider).invoke(workflow.copy(enabled = false), input).test {
+            assertEquals(ExecutionState.Preparing, awaitItem())
+            val error = (awaitItem() as ExecutionState.Failed).error as AiError.Disabled
+            assertEquals("Summarise", error.workflowName)
+            awaitComplete()
+        }
+
+        // The point of refusing rather than firing: the user's key is never spent on a workflow
+        // they believe is switched off.
+        assertNull("a switched-off workflow reached the provider", provider.lastRequest)
+    }
+
+    /**
+     * Before the provider is resolved, so the message is about the switch rather than about a key
+     * or a provider — and so a user with nothing connected still gets the useful sentence.
+     */
+    @Test
+    fun `switched off is reported ahead of a missing provider`() = runTest {
+        val useCase = useCase(providers = FakeProviderRepository(config = null))
+
+        useCase(workflow.copy(enabled = false), input).test {
+            assertEquals(ExecutionState.Preparing, awaitItem())
+            assertTrue((awaitItem() as ExecutionState.Failed).error is AiError.Disabled)
+            awaitComplete()
+        }
+    }
+
+    /**
+     * The refusal is recorded like any other failure. A shortcut that appears to do nothing is
+     * exactly the case where the user needs somewhere that says what happened.
+     */
+    @Test
+    fun `a refused run still lands in history`() = runTest {
+        val history = FakeHistoryRepository()
+
+        useCase(history = history).invoke(workflow.copy(enabled = false), input).test {
+            skipItems(2)
+            awaitComplete()
+        }
+
+        val run = history.records.single()
+        assertEquals(RunStatus.FAILED, run.status)
+        assertEquals("Summarise", run.workflowName)
+        assertNotNull(run.error)
+    }
+
+    /**
+     * The builder's "try it" hands over an explicitly enabled draft, so this is what it exercises:
+     * the guard reads the workflow it is given and nothing else.
+     */
+    @Test
+    fun `a switched-on workflow is unaffected by the guard`() = runTest {
+        useCase().invoke(workflow.copy(enabled = true), input).test {
+            skipItems(3)
+            assertTrue(awaitItem() is ExecutionState.Success)
+            awaitComplete()
+        }
+    }
+
     @Test
     fun `no provider fails with NoProvider`() = runTest {
         val useCase = useCase(providers = FakeProviderRepository(config = null))

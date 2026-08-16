@@ -281,6 +281,58 @@ class WorkflowBundleTest {
         assertEquals(4, spec.sortOrder)
     }
 
+    // -- A bundle cannot install something the user cannot see ---------------------------------
+
+    /**
+     * The sharpest case of the whole sanitisation table, and the reason `enabled` has no field in
+     * `WorkflowSpec` at all rather than one that gets stripped.
+     *
+     * Every other unsafe field is at least *visible* once imported — a bad `sortOrder` puts the
+     * workflow in the wrong place, a stolen `isPinned` puts it on Home. A workflow that arrived
+     * switched off would appear in no picker anywhere in the app, and the user was never told it
+     * was off, so there is nothing on screen to notice and nothing to undo. It reads as "the
+     * import silently didn't work".
+     *
+     * `ignoreUnknownKeys` is what makes the field impossible to carry: the key is dropped before it
+     * can reach anything, and the workflow arrives on. If someone ever adds `enabled` to
+     * `WorkflowSpec`, this test fails and points at the sentence explaining why.
+     */
+    @Test
+    fun `a file cannot import a workflow already switched off`() {
+        val workflow = importedWorkflow("""{"name":"Quiet","prompt":"P","enabled":false}""")
+
+        assertTrue("an imported workflow arrived switched off", workflow.enabled)
+    }
+
+    /** Same promise for the gallery ArcX ships, which comes in through the same mapper. */
+    @Test
+    fun `a starter cannot ship switched off either`() {
+        val spec = parseWorkflowBundle("""{"workflows":[{"name":"N","prompt":"P","enabled":false}]}""")
+            .workflows.single()
+
+        assertTrue(spec.toWorkflowAsStarter(now = 1L).enabled)
+    }
+
+    /**
+     * The other direction. A switched-off workflow is still exported — a backup that quietly left
+     * things out would be worse than no backup — and the file it writes carries no trace of the
+     * switch, so it arrives usable on the other phone.
+     */
+    @Test
+    fun `an export of a switched-off workflow carries no trace of the switch`() {
+        val text = encodeWorkflowBundle(
+            WorkflowBundle(
+                workflows = listOf(
+                    Workflow(id = "x", name = "Quiet", prompt = "P", enabled = false).toSpec(),
+                ),
+            ),
+        )
+
+        assertFalse("the export names the switch", text.contains("enabled"))
+        assertTrue("the workflow was dropped from the export", text.contains("Quiet"))
+        assertTrue(parseWorkflowBundle(text).workflows.single().toWorkflowAsImport().enabled)
+    }
+
     /** A round trip through a file cannot smuggle back what export was willing to write. */
     @Test
     fun `pinning does not survive the round trip back in`() {

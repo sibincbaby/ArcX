@@ -108,10 +108,7 @@ internal fun ProvidersScreen(
                 }
             }
 
-            SettingsNote(
-                "Keys are stored in this device's encrypted keystore. ArcX never uploads them, " +
-                    "because there is nowhere for it to upload them to.",
-            )
+            SettingsNote("Keys are stored in this device's encrypted keystore and never uploaded.")
             Spacer(Modifier.height(Spacing.Xxl))
         }
     }

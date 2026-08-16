@@ -48,6 +48,19 @@ sealed class AiError(message: String, cause: Throwable? = null) : Exception(mess
     class NoProvider :
         AiError("No AI provider configured yet")
 
+    /**
+     * The workflow is switched off, and something fired it anyway.
+     *
+     * Reachable because a launcher keeps a pinned shortcut whether or not ArcX would still offer
+     * the workflow behind it — the same reason a deleted workflow's shortcut survives. Switching
+     * one off removes it from every picker, but it cannot reach into the launcher and take the
+     * icon back, so the refusal has to happen at the moment it is fired and it has to say why.
+     * Failing silently would leave a shortcut that does nothing, with no way to tell that from a
+     * crash.
+     */
+    class Disabled(val workflowName: String) :
+        AiError("$workflowName is switched off. Turn it back on in your Library.")
+
     /** The workflow works on text, and no text could be found to work on. */
     class NoInput :
         AiError("This workflow needs some text to work on")

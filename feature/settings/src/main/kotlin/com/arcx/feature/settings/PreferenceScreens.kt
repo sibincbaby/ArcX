@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.arcx.core.designsystem.component.ArcxGlassSurface
+import com.arcx.core.designsystem.component.ExpandableNote
 import com.arcx.core.designsystem.component.SectionHeader
 import com.arcx.core.designsystem.theme.PanelScrim
 import com.arcx.core.designsystem.theme.Spacing
@@ -139,14 +140,19 @@ internal fun AppearanceScreen(
                     valueRange = 0f..UserSettings.POPUP_MAX_TRANSPARENCY,
                     step = PercentStep,
                     format = ::percentLabel,
-                    // The cap is a legibility floor rather than a taste one, and a user who reaches
-                    // it deserves to know why it will not go further. See POPUP_MAX_TRANSPARENCY.
-                    supporting = "How much of the app behind shows through the workflow panel and " +
-                        "the popup an answer comes back in. Stops at " +
-                        "${(UserSettings.POPUP_MAX_TRANSPARENCY * 100).roundToInt()}% because " +
-                        "past that the text stops being readable over a bright app underneath.",
+                    supporting = "How much of the app behind shows through the workflow panel " +
+                        "and the answer popup.",
                     onValueChange = onPopupTransparencyChange,
-                )
+                ) {
+                    // The cap is a legibility floor rather than a taste one, so the reason stays
+                    // in the app — but a user dragging this slider is choosing a number, not
+                    // asking why the track ends. See POPUP_MAX_TRANSPARENCY.
+                    ExpandableNote(
+                        label = "Why it stops at $popupCapLabel",
+                        body = "Past that the text stops being readable over a bright app " +
+                            "underneath.",
+                    )
+                }
             }
 
             SectionHeader("The sidebar")
@@ -156,8 +162,7 @@ internal fun AppearanceScreen(
             // and notice that the screen had grown.
             DependentControls(
                 enabled = sidebarLive,
-                reason = "The edge sidebar is off, so there is nothing on screen for these to " +
-                    "change. Turn it on under Entry points.",
+                reason = "The edge sidebar is off. Turn it on under Entry points.",
             ) {
                 SettingsGroup {
                     SidebarSideRow(side = settings.sidebarSide, onSideChange = onSidebarSideChange)
@@ -167,9 +172,7 @@ internal fun AppearanceScreen(
                         valueRange = 0f..1f,
                         step = PercentStep,
                         format = ::percentLabel,
-                        supporting = "Where the middle of the strip sits, from the top of the " +
-                            "screen down. Kept as a proportion rather than a distance, so it " +
-                            "comes back to the same place after you rotate the phone.",
+                        supporting = "Where the middle of the strip sits, from the top down.",
                         onValueChange = onSidebarVerticalPercentChange,
                     )
                     SettingsSlider(
@@ -179,16 +182,21 @@ internal fun AppearanceScreen(
                             UserSettings.SIDEBAR_MAX_LENGTH_DP.toFloat(),
                         step = 1f,
                         format = ::dpLabel,
-                        // The cap is Android's, not a house style, and a user who hits it deserves
-                        // to know it will not move. See UserSettings.SIDEBAR_MAX_LENGTH_DP.
-                        supporting = "Stops at ${UserSettings.SIDEBAR_MAX_LENGTH_DP}dp because " +
-                            "Android stops there: it keeps the back gesture off this strip, and " +
-                            "it will only do that for ${UserSettings.SIDEBAR_MAX_LENGTH_DP}dp of " +
-                            "a screen edge. A longer strip would have a stretch at the end where " +
-                            "your swipe goes back instead of opening ArcX, with nothing on screen " +
-                            "to tell you where that stretch begins.",
+                        supporting = "How much of the edge the strip covers.",
                         onValueChange = { onSidebarLengthChange(it.roundToInt()) },
-                    )
+                    ) {
+                        // The cap is Android's, not a house style, and it is the one thing on this
+                        // screen someone is likely to file a bug about — so it stays, a tap away
+                        // from the slider that runs into it. See UserSettings.SIDEBAR_MAX_LENGTH_DP.
+                        ExpandableNote(
+                            label = "Why it stops at ${UserSettings.SIDEBAR_MAX_LENGTH_DP}dp",
+                            body = "Android will keep the back gesture off only " +
+                                "${UserSettings.SIDEBAR_MAX_LENGTH_DP}dp of a screen edge. A " +
+                                "longer strip would have a stretch at the end where your swipe " +
+                                "goes back instead of opening ArcX, with nothing on screen to " +
+                                "tell you where that stretch begins.",
+                        )
+                    }
                     SettingsSlider(
                         title = "Thickness",
                         value = settings.sidebarWidthDp.toFloat(),
@@ -196,9 +204,10 @@ internal fun AppearanceScreen(
                             UserSettings.SIDEBAR_MAX_WIDTH_DP.toFloat(),
                         step = 1f,
                         format = ::dpLabel,
-                        supporting = "How wide the strip is drawn — not how big a target it is. " +
-                            "It takes touches across a full ${SidebarTouchWidthDp}dp whatever " +
-                            "this says, so the default hairline is far easier to hit than it looks.",
+                        // Stays visible and stays one line: a user who cannot hit a 9dp hairline
+                        // will reach for this slider, and the answer is that they already can.
+                        supporting = "Drawn width only — the strip always takes touches across a " +
+                            "full ${SidebarTouchWidthDp}dp band.",
                         onValueChange = { onSidebarWidthChange(it.roundToInt()) },
                     )
                     SettingsSlider(
@@ -207,17 +216,14 @@ internal fun AppearanceScreen(
                         valueRange = 0f..1f,
                         step = PercentStep,
                         format = ::percentLabel,
-                        supporting = "Fades the strip you can see. The band it takes touches in " +
-                            "never fades with it, so even at nothing it still opens.",
+                        supporting = "Fades the strip you can see. It still opens at 0% — the " +
+                            "touch band never fades.",
                         onValueChange = onSidebarOpacityChange,
                     )
                 }
             }
             if (sidebarLive) {
-                SettingsNote(
-                    "Each of these applies as you drag it. The strip is its own window sitting " +
-                        "above this screen, so what moves is the real thing.",
-                )
+                SettingsNote("Each of these applies as you drag it — what moves is the real strip.")
             }
 
             // The two lists differ because the sidebar's window may never take focus — without
@@ -233,9 +239,8 @@ internal fun AppearanceScreen(
                     // DependentControls — a note floating inside the card would read as belonging
                     // to the switch below it as well.
                     subtitle = if (sidebarLive) {
-                        "Search included, like every other entry point. The screen is still read " +
-                            "before the list appears, so workflows that use it keep working — but " +
-                            "the list covers the app instead of floating over it."
+                        "Search included — but the list covers the app instead of floating over " +
+                            "it. Workflows that read the screen still work."
                     } else {
                         "Turn the edge sidebar on under Entry points to choose what it opens."
                     },
@@ -252,7 +257,7 @@ internal fun AppearanceScreen(
                     // again at the next font scale. The subtitle names the "elsewhere" anyway.
                     title = "Compact list elsewhere",
                     subtitle = "Drops the search box from the tile, share sheet, shortcuts and " +
-                        "the drawer icon, so they match the sidebar's panel.",
+                        "the drawer icon.",
                     icon = Icons.Outlined.CloseFullscreen,
                     checked = settings.compactPicker,
                     onCheckedChange = onCompactPickerChange,
@@ -271,6 +276,9 @@ internal fun AppearanceScreen(
  * touch target and has no reason to move; if it ever does, this is the sentence that starts lying.
  */
 private const val SidebarTouchWidthDp = 48
+
+/** The cap named once, so the label on the disclosure and the end of the track cannot drift. */
+private val popupCapLabel: String = percentLabel(UserSettings.POPUP_MAX_TRANSPARENCY)
 
 private fun dpLabel(value: Float): String = "${value.roundToInt()}dp"
 
@@ -300,15 +308,22 @@ private fun SidebarSideRow(side: SidebarSide, onSideChange: (SidebarSide) -> Uni
         // Says which edge ships selected, not which edge is selected. As "Left to begin with,
         // because…" it sat under a control reading "Right" and described it — the only line on
         // this screen that changed meaning depending on the setting above it, while being the
-        // one line that never changes. The reason is worth keeping: it is why the default is
-        // what it is, and it is also the warning for anyone about to move the strip to the right.
+        // one line that never changes.
+        //
+        // The split: the sentence stays because it is the warning for anyone about to move the
+        // strip to the right, and that is a choice being made three inches above it. Which
+        // vendor's handle is in the way, and what two handles on one edge actually does, is the
+        // answer to "why" — real, and not needed to pick a side.
         Text(
             text = "Either edge works. Left is the default because the right one is usually " +
-                "already taken — Samsung's own Edge panel handle lives there and is on out of " +
-                "the box, and two handles on one edge means one inward swipe with two things " +
-                "expecting it.",
+                "already taken.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ExpandableNote(
+            label = "Why the right edge is usually taken",
+            body = "Samsung's own Edge panel handle lives there and is on out of the box, and " +
+                "two handles on one edge means one inward swipe with two things expecting it.",
         )
     }
 }
@@ -448,10 +463,11 @@ internal fun PrivacyScreen(
                     onClick = { confirmDeleteScreenshots = true },
                 )
             }
+            // Leads with the guarantee rather than the mechanism. Both facts survive; the one the
+            // retention choice above turns on is now the first thing read instead of the last.
             SettingsNote(
-                "Workflows that act on your screen save a picture of it here so History can " +
-                    "show you what they were given. Those pictures are the only screen " +
-                    "contents ArcX ever writes to storage.",
+                "The only screen contents ArcX ever writes to storage. They are saved so History " +
+                    "can show what a workflow was given.",
             )
 
             // The counterweight to the danger zone below, and it belongs on the same screen: a
@@ -468,10 +484,7 @@ internal fun PrivacyScreen(
                     onClick = onExportWorkflows,
                 )
             }
-            SettingsNote(
-                "Prompts and wiring only. Your API keys are not in the file and never leave the " +
-                    "encrypted store on this device.",
-            )
+            SettingsNote("Prompts and wiring only — your API keys are not in the file.")
 
             SectionHeader("Danger zone")
             SettingsGroup {
@@ -483,10 +496,12 @@ internal fun PrivacyScreen(
                 )
             }
 
+            // Stays whole and stays visible: "there is no backup" is what the row above it costs
+            // if it is wrong about, and a warning behind a tap is a warning nobody read.
             SettingsNote(
-                "ArcX has no account and no backend. Nothing here is synced or backed up, so " +
-                    "deleting it deletes it. The only thing that ever leaves this device is the " +
-                    "text you send to the AI provider you configured, and it goes straight there.",
+                "Nothing here is synced or backed up, so deleting it deletes it. The only thing " +
+                    "that ever leaves this device is the text you send to the AI provider you " +
+                    "connected.",
             )
             Spacer(Modifier.height(Spacing.Xxl))
         }

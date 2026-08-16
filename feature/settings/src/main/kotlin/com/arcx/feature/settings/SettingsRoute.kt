@@ -365,10 +365,10 @@ private fun SettingsRootScreen(
                 )
             }
 
-            SettingsNote(
-                "ArcX has no account and no server of its own. Your workflows and keys stay on " +
-                    "this device, and your text goes only to the AI provider you connected.",
-            )
+            // The BYOK paragraph that used to sit here said, in different words, what About's
+            // "Bring your own key" group and Privacy's closing note both say — three copies of one
+            // claim, one of them on a screen that is nothing but six links. The two that are on
+            // the screens someone opens to *ask* the question stayed.
             Spacer(Modifier.height(Spacing.Xxl))
         }
     }

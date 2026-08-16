@@ -39,6 +39,20 @@ data class Workflow(
     val isPinned: Boolean = false,
     val isFavorite: Boolean = false,
     val isBuiltIn: Boolean = false,
+    /**
+     * Whether this workflow is offered anywhere the user picks something to run — the runner's
+     * picker, the sidebar panel, the widget, the launcher's shortcut menu.
+     *
+     * Off is not delete. The row stays in the Library, visibly off and one tap from back on, and
+     * nothing about it changes: not its history, not its screenshots, not the record itself. That
+     * is the whole point — a starter the user deletes is gone for good, so "I don't use this" had
+     * no answer short of destroying something.
+     *
+     * Defaults to true, and every path that creates a workflow leaves it that way: a migration or
+     * an import that switched something off would hide it in every picker with nothing on screen
+     * to explain why.
+     */
+    val enabled: Boolean = true,
     val sortOrder: Int = 0,
     val createdAt: Long = 0L,
     val updatedAt: Long = 0L,

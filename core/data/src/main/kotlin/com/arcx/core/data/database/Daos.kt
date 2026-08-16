@@ -8,18 +8,35 @@ import androidx.room.Upsert
 import com.arcx.core.model.RunStatus
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * Every read here except [observeAll] is a **picker** feed — something the user chooses a workflow
+ * to run from — so every one of them carries `enabled = 1`.
+ *
+ * The filter lives in SQL rather than in the callers on purpose. There are six surfaces reading
+ * these queries across four modules, two of which cannot see each other, and "off" is only true if
+ * *all* of them honour it; a filter each caller has to remember is one a seventh surface will
+ * silently skip. [observeAll] is the deliberate exception — the Library has to show a switched-off
+ * workflow, or there would be nowhere to switch it back on.
+ */
 @Dao
 interface WorkflowDao {
+    /** Everything, disabled included: the Library, the export, and "delete all local data". */
     @Query("SELECT * FROM workflows ORDER BY sortOrder ASC, name ASC")
     fun observeAll(): Flow<List<WorkflowEntity>>
 
-    @Query("SELECT * FROM workflows WHERE isFavorite = 1 ORDER BY sortOrder ASC, name ASC")
+    @Query("SELECT * FROM workflows WHERE enabled = 1 ORDER BY sortOrder ASC, name ASC")
+    fun observeEnabled(): Flow<List<WorkflowEntity>>
+
+    @Query("SELECT * FROM workflows WHERE isFavorite = 1 AND enabled = 1 ORDER BY sortOrder ASC, name ASC")
     fun observeFavorites(): Flow<List<WorkflowEntity>>
 
-    @Query("SELECT * FROM workflows WHERE isPinned = 1 ORDER BY sortOrder ASC, name ASC")
+    @Query("SELECT * FROM workflows WHERE isPinned = 1 AND enabled = 1 ORDER BY sortOrder ASC, name ASC")
     fun observePinned(): Flow<List<WorkflowEntity>>
 
-    @Query("SELECT * FROM workflows WHERE lastRunAt IS NOT NULL ORDER BY lastRunAt DESC LIMIT :limit")
+    @Query(
+        "SELECT * FROM workflows WHERE lastRunAt IS NOT NULL AND enabled = 1 " +
+            "ORDER BY lastRunAt DESC LIMIT :limit",
+    )
     fun observeRecent(limit: Int): Flow<List<WorkflowEntity>>
 
     @Query("SELECT * FROM workflows WHERE id = :id")
@@ -45,6 +62,22 @@ interface WorkflowDao {
 
     @Query("UPDATE workflows SET isPinned = :pinned, updatedAt = :now WHERE id = :id")
     suspend fun setPinned(id: String, pinned: Boolean, now: Long)
+
+    /**
+     * One column, like the two above it. A read-modify-write of the whole row from a `Workflow` the
+     * caller is holding would carry every other field back with it — including the ones a list row
+     * never loaded fresh — so a switch flipped from a stale list could undo an edit made elsewhere.
+     *
+     * **`updatedAt` is deliberately not touched, unlike [setFavorite] and [setPinned].** The
+     * Library's default sort is "Recently updated", so stamping it pulls the row to the top of its
+     * section the instant the switch moves — and this is the one control a user reaches for several
+     * times in a row, on a screen full of starters they are pruning. Measured on device: switching
+     * one off slid it above two rows that had not moved, on every tap. Pinning and starring earn
+     * their stamp because moving the row *is* the visible result of the action; switching one off
+     * changes nothing about where it belongs in the Library, only whether it is offered elsewhere.
+     */
+    @Query("UPDATE workflows SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean)
 
     @Query("UPDATE workflows SET lastRunAt = :at WHERE id = :id")
     suspend fun touchLastRun(id: String, at: Long)

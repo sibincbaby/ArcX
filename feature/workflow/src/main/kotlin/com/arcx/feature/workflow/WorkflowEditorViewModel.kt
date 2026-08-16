@@ -284,7 +284,15 @@ internal class WorkflowEditorViewModel @Inject constructor(
 
         // MANUAL because the sample text is typed in here; the real input source would send the
         // test looking at a selection or the screen, neither of which exists in the builder.
-        val draft = state.toWorkflow(null).copy(input = InputSource.MANUAL)
+        //
+        // enabled = true is stated rather than inherited, for a related reason. Off means "do not
+        // offer this anywhere the user picks something to run", and the builder is not one of
+        // those places — it is the workbench, and the user is looking straight at the thing they
+        // asked to try; refusing here would answer a question nobody asked. Passing `null` above
+        // happens to produce the same value today, which is exactly why it is worth writing down:
+        // the day this passes `original` instead, the try-it button would otherwise start
+        // refusing to run a workflow the user had switched off, with no clue why.
+        val draft = state.toWorkflow(null).copy(input = InputSource.MANUAL, enabled = true)
         testJob = viewModelScope.launch {
             var answer = ""
             execute(draft, WorkflowInput(text = state.sampleText), recordHistory = false)
@@ -373,6 +381,11 @@ private fun WorkflowEditorState.toWorkflow(original: Workflow?): Workflow {
         isPinned = if (forking) false else original?.isPinned == true,
         isFavorite = if (forking) false else original?.isFavorite == true,
         isBuiltIn = false,
+        // Carried through rather than defaulted, for the same reason isPinned is: the form has no
+        // control for it, so leaving it out would have every save of a switched-off workflow
+        // quietly switch it back on. A fork of a built-in starts on — it is a new workflow the
+        // user asked for, and one that appeared in no picker would just look broken.
+        enabled = if (forking) true else original?.enabled != false,
         sortOrder = original?.sortOrder ?: 0,
         createdAt = if (forking) 0L else original?.createdAt ?: 0L,
         updatedAt = 0L,

@@ -24,4 +24,10 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.serialization.json)
+
+    // A real SQLite engine on the JVM, so `MigrationsTest` can execute a migration against a
+    // populated v3 table and read the rows back. Asserting the SQL string instead would pass on a
+    // statement SQLite rejects, and the one thing a migration must never get wrong — what happens
+    // to the rows that were already there — is exactly what a string cannot show.
+    testImplementation(libs.sqlite.jdbc)
 }

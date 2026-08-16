@@ -8,6 +8,7 @@ import com.arcx.core.domain.repository.WorkflowRepository
 import com.arcx.core.domain.usecase.DeleteWorkflowUseCase
 import com.arcx.core.domain.usecase.DuplicateWorkflowUseCase
 import com.arcx.core.domain.usecase.SaveWorkflowUseCase
+import com.arcx.core.domain.usecase.ToggleEnabledUseCase
 import com.arcx.core.domain.usecase.ToggleFavoriteUseCase
 import com.arcx.core.domain.usecase.TogglePinnedUseCase
 import com.arcx.core.model.Workflow
@@ -86,6 +87,7 @@ internal class WorkflowListViewModel @Inject constructor(
     private val surfaces: SystemSurfaces,
     private val favorite: ToggleFavoriteUseCase,
     private val pinned: TogglePinnedUseCase,
+    private val switched: ToggleEnabledUseCase,
     private val remove: DeleteWorkflowUseCase,
     private val restore: SaveWorkflowUseCase,
     private val clone: DuplicateWorkflowUseCase,
@@ -192,6 +194,15 @@ internal class WorkflowListViewModel @Inject constructor(
 
     fun togglePinned(workflow: Workflow) {
         viewModelScope.launch { pinned(workflow) }
+    }
+
+    /**
+     * Takes the workflow out of every picker, or puts it back. No snackbar and no confirmation,
+     * unlike delete: the control that did it is still on screen, still showing what it did, and
+     * flipping it back costs one tap. Nothing is destroyed, so there is nothing to undo.
+     */
+    fun toggleEnabled(workflow: Workflow) {
+        viewModelScope.launch { switched(workflow) }
     }
 
     /**

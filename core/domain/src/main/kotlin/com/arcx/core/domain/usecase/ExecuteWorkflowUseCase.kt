@@ -53,6 +53,24 @@ class ExecuteWorkflowUseCase @Inject constructor(
         val startedAt = time.nowMillis()
         emit(ExecutionState.Preparing)
 
+        // First, before the provider is even resolved. Switching a workflow off takes it out of
+        // every picker, but a pinned launcher shortcut, a widget cell and a bare `arcx://run/{id}`
+        // all outlive that — a launcher keeps a shortcut whether or not ArcX would still offer the
+        // workflow behind it. The check belongs here because this is the one place every entry
+        // point ends up, so it is the one place that can promise "off means off" for all of them.
+        //
+        // It refuses rather than firing: "the user pinned it, so they meant it" is arguable, but it
+        // makes off mean off-unless-you-took-a-shortcut, and a workflow that spends the user's key
+        // while they believe it is switched off is the one outcome that cannot be walked back.
+        // Refusing is recoverable in one tap and says so out loud.
+        if (!workflow.enabled) {
+            fail(
+                workflow, null, "", startedAt, input.text.orEmpty(),
+                AiError.Disabled(workflow.name), recordHistory = recordHistory,
+            )
+            return@flow
+        }
+
         val config = providers.resolve(workflow.providerId)
         if (config == null) {
             fail(

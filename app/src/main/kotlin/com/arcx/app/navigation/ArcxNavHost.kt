@@ -1,5 +1,6 @@
 package com.arcx.app.navigation
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -84,12 +85,28 @@ private val AnimatedContentTransitionScope<NavBackStackEntry>.isLateral: Boolean
     get() = initialState.isTopLevel && targetState.isTopLevel
 
 private val NavBackStackEntry.isTopLevel: Boolean
-    get() = TopLevelDestination.entries.any { it.route == destination.route }
+    get() = TopLevelDestination.entries.any { it.route == destination.route.baseRoute }
+
+/**
+ * A registered route without its optional arguments — "activity?run={runId}" is the Activity tab.
+ *
+ * Two things ask whether a destination is a tab: the bottom bar's selection, and [isLateral], which
+ * decides between a fade-through and a push. Both used to compare the whole route string, which was
+ * fine while every tab took no arguments. Activity now takes an optional run id so Home can open a
+ * failed run where its error already lives, and without this the tab would neither highlight nor
+ * animate as a peer whenever it was reached that way. The editor and Settings both survive it:
+ * their bases are "editor" and "settings", which are nobody's tab.
+ */
+private val String?.baseRoute: String?
+    get() = this?.substringBefore('?')
 
 private const val EDITOR_ROUTE = "editor"
 private const val EDITOR_ARG = "workflowId"
 private const val SETTINGS_ROUTE = "settings"
 private const val SETTINGS_ARG = "startAt"
+
+/** The run to open on arrival at Activity. Optional: the tab is normally reached with no run. */
+private const val ACTIVITY_ARG = "run"
 
 /**
  * Settings is one destination with an optional argument, not one route per screen — the same shape
@@ -139,7 +156,7 @@ fun ArcxNavHost(
 
     // The bottom bar belongs to the tabs only; the editor and settings are full-screen pushes.
     val showBottomBar = TopLevelDestination.entries.any { destination ->
-        currentRoute?.hierarchy?.any { it.route == destination.route } == true
+        currentRoute?.hierarchy?.any { it.route.baseRoute == destination.route } == true
     }
 
     fun openEditor(workflowId: String?) {
@@ -154,6 +171,23 @@ fun ArcxNavHost(
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
             launchSingleTop = true
             restoreState = true
+        }
+    }
+
+    /**
+     * Activity, with one run's detail sheet already open — Home's failed rows lead here rather than
+     * carrying a second copy of that sheet.
+     *
+     * Deliberately not [openTab]. `restoreState` would bring back the Activity entry the user last
+     * left, arguments and all, and swallow the run we were asked to open; that entry is still saved
+     * and still comes back the next time the tab itself is tapped. The id is encoded because it
+     * goes into a route string, even though every one written so far is a UUID.
+     */
+    fun openRun(runId: String) {
+        val route = "${TopLevelDestination.ACTIVITY.route}?$ACTIVITY_ARG=${Uri.encode(runId)}"
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
         }
     }
 
@@ -176,8 +210,8 @@ fun ArcxNavHost(
             ) {
                 NavigationBar {
                     TopLevelDestination.entries.forEach { destination ->
-                        val selected =
-                            currentRoute?.hierarchy?.any { it.route == destination.route } == true
+                        val selected = currentRoute?.hierarchy
+                            ?.any { it.route.baseRoute == destination.route } == true
                         NavigationBarItem(
                             selected = selected,
                             onClick = { openTab(destination) },
@@ -222,12 +256,13 @@ fun ArcxNavHost(
                 popExitTransition = { if (isLateral) lateralExit() else popExit() },
             ) {
                 composable(TopLevelDestination.HOME.route) {
+                    // Home no longer runs or edits a workflow: it is the status screen, and a run
+                    // fired from in front of ArcX's own window has nothing to read. Creating one is
+                    // still offered, but only from the state where the library is empty.
                     HomeRoute(
-                        onRunWorkflow = onRunWorkflow,
-                        onEditWorkflow = ::openEditor,
                         onCreateWorkflow = { openEditor(null) },
-                        onSeeAllWorkflows = { openTab(TopLevelDestination.LIBRARY) },
                         onSeeActivity = { openTab(TopLevelDestination.ACTIVITY) },
+                        onOpenRun = ::openRun,
                         onOpenSettings = { navController.navigate(settingsRoute(null)) },
                         onOpenSurfaceSettings = { subject ->
                             navController.navigate(settingsRoute(settingsDestinationFor(subject)))
@@ -247,8 +282,22 @@ fun ArcxNavHost(
                     DiscoverRoute(onOpenWorkflow = ::openEditor)
                 }
 
-                composable(TopLevelDestination.ACTIVITY.route) {
-                    HistoryRoute(onRunWorkflow = onRunWorkflow)
+                // The one tab with an argument, and it is optional: tapping the tab navigates to
+                // "activity" and falls through to the default, meaning "open nothing in particular".
+                composable(
+                    route = "${TopLevelDestination.ACTIVITY.route}?$ACTIVITY_ARG={$ACTIVITY_ARG}",
+                    arguments = listOf(
+                        navArgument(ACTIVITY_ARG) {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                    ),
+                ) { entry ->
+                    HistoryRoute(
+                        onRunWorkflow = onRunWorkflow,
+                        openRunId = entry.arguments?.getString(ACTIVITY_ARG),
+                    )
                 }
 
                 composable(

@@ -76,8 +76,10 @@ internal fun PermissionsScreen(
                     },
             )
             Text(
-                text = "None of these is asked for on launch, and ArcX keeps working without all " +
-                    "three — each one buys one thing, named below.",
+                // "each one buys one thing, named below" was the screen describing its own
+                // layout, which the layout does on its own.
+                text = "None of these is asked for on launch, and ArcX keeps working without " +
+                    "all three.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(
@@ -111,10 +113,7 @@ internal fun PermissionsScreen(
                     },
                 )
             }
-            SettingsNote(
-                "Only the edge sidebar needs this. Every other way into ArcX opens an ordinary " +
-                    "window and works without it.",
-            )
+            SettingsNote("Only the edge sidebar needs this — every other way in works without it.")
 
             // Whether there is still a dialog to show. Android puts POST_NOTIFICATIONS up once and
             // never again, and below Android 13 there was never a dialog at all — notifications are
@@ -147,9 +146,11 @@ internal fun PermissionsScreen(
                     },
                 )
             }
+            // Two things need it, so it is written as two things rather than as a sentence with
+            // a subordinate clause carrying the second one.
             SettingsNote(
-                "Workflows that deliver their answer as a notification need this, and so does the " +
-                    "edge sidebar, which Android requires to run behind an ongoing notification.",
+                "Needed by workflows that answer with a notification, and by the edge sidebar — " +
+                    "Android runs it behind an ongoing notification.",
             )
 
             // The disclosure sits above the control, which is the placement Play's policy asks for:

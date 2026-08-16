@@ -40,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,6 +53,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -126,6 +129,7 @@ fun WorkflowListRoute(
         onEdit = { onEditWorkflow(it.id) },
         onCreate = onCreateWorkflow,
         onToggleFavorite = viewModel::toggleFavorite,
+        onToggleEnabled = viewModel::toggleEnabled,
         onDuplicate = { workflow -> viewModel.duplicate(workflow, openEditor = workflow.isBuiltIn) },
         onTogglePin = viewModel::togglePinned,
         onAddToHomeScreen = viewModel::addToHomeScreen,
@@ -144,6 +148,7 @@ private fun WorkflowListScreen(
     onEdit: (Workflow) -> Unit,
     onCreate: () -> Unit,
     onToggleFavorite: (Workflow) -> Unit,
+    onToggleEnabled: (Workflow) -> Unit,
     onDuplicate: (Workflow) -> Unit,
     onTogglePin: (Workflow) -> Unit,
     onAddToHomeScreen: (Workflow) -> Unit,
@@ -247,6 +252,7 @@ private fun WorkflowListScreen(
                     onRun = onRun,
                     onEdit = onEdit,
                     onToggleFavorite = onToggleFavorite,
+                    onToggleEnabled = onToggleEnabled,
                     onDuplicate = onDuplicate,
                     onTogglePin = onTogglePin,
                     onAddToHomeScreen = onAddToHomeScreen,
@@ -282,6 +288,7 @@ private fun LazyListScope.librarySections(
     onRun: (Workflow) -> Unit,
     onEdit: (Workflow) -> Unit,
     onToggleFavorite: (Workflow) -> Unit,
+    onToggleEnabled: (Workflow) -> Unit,
     onDuplicate: (Workflow) -> Unit,
     onTogglePin: (Workflow) -> Unit,
     onAddToHomeScreen: (Workflow) -> Unit,
@@ -305,6 +312,7 @@ private fun LazyListScope.librarySections(
                 onRun = { onRun(workflow) },
                 onConfigure = { onEdit(workflow) },
                 onToggleFavorite = { onToggleFavorite(workflow) },
+                onToggleEnabled = { onToggleEnabled(workflow) },
                 onDuplicate = { onDuplicate(workflow) },
                 onTogglePin = { onTogglePin(workflow) },
                 onAddToHomeScreen = { onAddToHomeScreen(workflow) },
@@ -385,7 +393,14 @@ private fun SortButton(sort: LibrarySort, onSortChange: (LibrarySort) -> Unit) {
 
 /**
  * The library's row is the app's row: [ArcxListRow] with the wiring chips as its subtitle, the
- * star and the overflow menu as its trailing content. One tap runs, a long press configures.
+ * star, the on/off switch and the overflow menu as its trailing content. One tap runs, a long
+ * press configures.
+ *
+ * The switch is a control of its own rather than `Role.Switch` on the whole row — which is what
+ * Settings does, and is right there, because a settings row has exactly one thing it can do. This
+ * row already has two: tapping it runs the workflow. Making the row itself toggleable would take
+ * that away, so the row stays a button and the switch is its own node with its own name, exactly
+ * as the star beside it already is.
  */
 @Composable
 private fun WorkflowRow(
@@ -395,6 +410,7 @@ private fun WorkflowRow(
     onRun: () -> Unit,
     onConfigure: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onToggleEnabled: () -> Unit,
     onDuplicate: () -> Unit,
     onTogglePin: () -> Unit,
     onAddToHomeScreen: () -> Unit,
@@ -407,12 +423,24 @@ private fun WorkflowRow(
         title = workflow.name,
         modifier = modifier,
         leading = {
+            // A switched-off workflow loses its category colour and goes neutral. It is the
+            // largest thing on the row, so a grey tile in a column of coloured ones is what makes
+            // "off" readable while scrolling — and it is a second cue beside the switch, rather
+            // than a second reading of the same one.
             val tint = workflow.category.tint()
             WorkflowIcon(
                 icon = workflow.icon,
                 size = ArcxListRowIconSize,
-                container = tint.container,
-                content = tint.content,
+                container = if (workflow.enabled) {
+                    tint.container
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHighest
+                },
+                content = if (workflow.enabled) {
+                    tint.content
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
             )
         },
         subtitle = {
@@ -438,6 +466,15 @@ private fun WorkflowRow(
                     },
                 )
             }
+
+            // Named after the workflow, not after the setting: landed on directly, "on, switch"
+            // says nothing about what is on. This announces "Fix Grammar, on, switch", and the
+            // role is what tells it apart from the row of the same name behind it.
+            Switch(
+                checked = workflow.enabled,
+                onCheckedChange = { onToggleEnabled() },
+                modifier = Modifier.semantics { contentDescription = workflow.name },
+            )
 
             Box {
                 IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(36.dp)) {

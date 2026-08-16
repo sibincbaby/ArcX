@@ -45,9 +45,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,9 +81,28 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun HistoryRoute(
     onRunWorkflow: (String) -> Unit,
+    /**
+     * A run to open the detail sheet on, arrived at from Home's "Recent" list. Home shows a failed
+     * run's first line and nothing more; the error in full, the input it was given and "Run again"
+     * are all in this sheet, so Home points here rather than growing a second copy of it.
+     */
+    openRunId: String? = null,
     viewModel: HistoryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Consumed exactly once, the same way SettingsRoute consumes its `startAt` and for the same
+    // reason: the argument stays on the back stack entry forever. Keyed on nothing and guarded by
+    // saved state, so a rotation — or the entry being restored when the user later taps the
+    // Activity tab — does not re-open a sheet they have already dismissed.
+    var opened by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!opened && openRunId != null) {
+            opened = true
+            viewModel.onOpenRun(openRunId)
+        }
+    }
+
     HistoryScreen(
         state = state,
         onRunWorkflow = onRunWorkflow,

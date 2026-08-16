@@ -44,6 +44,19 @@ class TogglePinnedUseCase @Inject constructor(
 }
 
 /**
+ * Switches a workflow on or off everywhere it is offered to be run.
+ *
+ * Deliberately shaped like the two above rather than like a delete: it writes one column, and the
+ * workflow, its runs and its screenshots are all still there afterwards.
+ */
+class ToggleEnabledUseCase @Inject constructor(
+    private val workflows: WorkflowRepository,
+) {
+    suspend operator fun invoke(workflow: Workflow) =
+        workflows.setEnabled(workflow.id, !workflow.enabled)
+}
+
+/**
  * Built-ins are read-only, so "edit" on one really means "clone it and edit the clone".
  * Returns null when the source is gone.
  */
@@ -60,6 +73,9 @@ class DuplicateWorkflowUseCase @Inject constructor(
                 isBuiltIn = false,
                 isPinned = false,
                 isFavorite = false,
+                // A copy the user just asked for arrives switched on even when its source is off —
+                // the alternative is a new workflow that appears in no picker and never explains why.
+                enabled = true,
                 createdAt = 0L,
                 updatedAt = 0L,
             ),

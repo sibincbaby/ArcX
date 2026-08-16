@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import com.arcx.core.designsystem.component.ExpandableNote
 import com.arcx.core.designsystem.component.NoticeCard
 import com.arcx.core.designsystem.component.NoticeSeverity
 import com.arcx.core.designsystem.component.SectionHeader
@@ -254,6 +255,11 @@ internal fun EntryPointsScreen(
             // has, so say what they are for rather than listing permissions.
             //
             // Amber, not red: none of this is broken, it is the platform behaving as designed.
+            //
+            // The card says what happens and how to undo it, because both are things the user does
+            // rather than things the platform explains. Which vendor mechanism governs it is the
+            // paragraph behind the tap — and it is only offered on the phones that have one, since
+            // on the rest the answer is "nothing you can do about it", which is already the card.
             NoticeCard(
                 severity = NoticeSeverity.Warning,
                 title = "Keeping the sidebar alive",
@@ -263,12 +269,23 @@ internal fun EntryPointsScreen(
                 modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = 6.dp),
                 message = if (hasAutostartScreen) {
                     "Clearing ArcX from Recents stops the sidebar, and your phone will not bring " +
-                        "it back on its own. Autostart is what allows it to return; locking ArcX " +
-                        "in Recents stops it being cleared in the first place. Opening ArcX, or " +
-                        "using it from the share or selection menu, always brings it back."
+                        "it back on its own. Opening ArcX, or using it from the share or " +
+                        "selection menu, brings it back."
                 } else {
                     "Clearing ArcX from Recents stops the sidebar until you open ArcX again, or " +
                         "use it from the share or selection menu."
+                },
+                details = if (hasAutostartScreen) {
+                    {
+                        ExpandableNote(
+                            label = "Stopping it being cleared",
+                            body = "Autostart is what allows the sidebar to come back on its " +
+                                "own; locking ArcX in Recents stops it being cleared in the " +
+                                "first place.",
+                        )
+                    }
+                } else {
+                    null
                 },
             )
             SettingsGroup {
@@ -310,9 +327,10 @@ internal fun EntryPointsScreen(
                 SurfaceRow(
                     icon = Icons.Outlined.Dashboard,
                     title = "Quick Settings tile",
+                    // With the Add button beside it the row does not have to say where a tile
+                    // lives; without it the row is the instructions, so that copy stays whole.
                     subtitle = if (canAddQuickTile) {
-                        "Sits with Wi-Fi and Bluetooth, so you can open your workflows from any " +
-                            "screen — even the lock screen."
+                        "Open your workflows from any screen, even the lock screen."
                     } else {
                         "Swipe down twice, tap Edit, and drag the ArcX tile in. It then works " +
                             "from any screen, even the lock screen."

@@ -34,6 +34,11 @@ internal class WorkflowRepositoryImpl @Inject constructor(
     override fun observeAll(): Flow<List<Workflow>> =
         dao.observeAll().map { rows -> rows.map { it.toModel() } }
 
+    // In SQL rather than by filtering observeAll(), so a library with 200 rows in it does not
+    // materialise 200 Workflow objects on every emission to draw the twenty that are switched on.
+    override fun observeEnabled(): Flow<List<Workflow>> =
+        dao.observeEnabled().map { rows -> rows.map { it.toModel() } }
+
     override fun observeFavorites(): Flow<List<Workflow>> =
         dao.observeFavorites().map { rows -> rows.map { it.toModel() } }
 
@@ -64,6 +69,10 @@ internal class WorkflowRepositoryImpl @Inject constructor(
 
     override suspend fun setPinned(id: String, pinned: Boolean) =
         dao.setPinned(id, pinned, time.nowMillis())
+
+    // One column, not the read-modify-write the interface's default has to settle for — and no
+    // clock, because this write must not restamp updatedAt. See WorkflowDao.setEnabled.
+    override suspend fun setEnabled(id: String, enabled: Boolean) = dao.setEnabled(id, enabled)
 
     /**
      * Emptiness, not a "seeded" flag, is the trigger: a user who deletes every starter should not

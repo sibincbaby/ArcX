@@ -141,6 +141,15 @@ fun NoticeCard(
     icon: ImageVector? = null,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
+    /**
+     * The rest of the story, under the message — today, an [ExpandableNote]. A caution whose
+     * mechanism runs to a paragraph belongs inside the card that raises it rather than stranded
+     * below it, where it would read as a note about the next group down.
+     *
+     * Warnings only. An error card merges its descendants into one live region so the whole card
+     * is announced at once, and that would swallow a disclosure header's own role and state.
+     */
+    details: (@Composable () -> Unit)? = null,
 ) {
     val warning = warningTint()
     val container = when (severity) {
@@ -214,6 +223,10 @@ fun NoticeCard(
                 // bodyMedium, not the bodySmall two of the three copies used: a notice is the one
                 // thing on screen the user has to actually read rather than scan.
                 Text(message, style = MaterialTheme.typography.bodyMedium)
+                if (details != null) {
+                    Spacer(Modifier.height(Spacing.Xs))
+                    details()
+                }
                 if (actionLabel != null && onAction != null) {
                     Spacer(Modifier.height(Spacing.Sm))
                     TextButton(onClick = onAction) { Text(actionLabel) }

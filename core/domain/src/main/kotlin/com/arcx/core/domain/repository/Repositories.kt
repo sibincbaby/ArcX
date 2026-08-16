@@ -9,18 +9,56 @@ import com.arcx.core.model.UserSettings
 import com.arcx.core.model.Workflow
 import com.arcx.core.model.WorkflowSpec
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
+/**
+ * The library.
+ *
+ * **[observeAll] is the only read that includes switched-off workflows.** Every other observer here
+ * feeds a picker — somewhere the user chooses a workflow to *run* — and `Workflow.enabled` is what
+ * decides whether one is offered there. Splitting it this way rather than filtering per call site
+ * is deliberate: the surfaces that pick a workflow live in four modules, two of which cannot see
+ * each other, and "off" only means anything if every one of them agrees.
+ *
+ * So: reading the library for display, for export or to wipe it — [observeAll]. Offering a workflow
+ * to run — anything else.
+ */
 interface WorkflowRepository {
+    /** Everything, disabled included. The Library shows those; nothing else may. */
     fun observeAll(): Flow<List<Workflow>>
+
+    /**
+     * Everything the user has left switched on. This is what a picker lists.
+     *
+     * The default is the definition, in one line, so an implementation cannot disagree with it by
+     * omission; the Room-backed one overrides it to filter in SQL rather than in memory.
+     */
+    fun observeEnabled(): Flow<List<Workflow>> =
+        observeAll().map { workflows -> workflows.filter { it.enabled } }
+
+    /** Favourites that are switched on — the widget, and the launcher's shortcut menu. */
     fun observeFavorites(): Flow<List<Workflow>>
+
+    /** Pinned workflows that are switched on — the sidebar panel and the top of every list. */
     fun observePinned(): Flow<List<Workflow>>
-    /** Most recently executed first; drives the Home screen's "Recent" row. */
+
+    /** Most recently executed first, switched-on only; drives the Home screen's "Recent" row. */
     fun observeRecent(limit: Int = 8): Flow<List<Workflow>>
     suspend fun get(id: String): Workflow?
     suspend fun upsert(workflow: Workflow)
     suspend fun delete(id: String)
     suspend fun setFavorite(id: String, favorite: Boolean)
     suspend fun setPinned(id: String, pinned: Boolean)
+
+    /**
+     * Switches a workflow on or off. **Not a delete** — nothing about the workflow, its history or
+     * its screenshots changes, which is the whole reason this exists rather than telling people to
+     * delete what they do not use. Not an edit either: `updatedAt` is left alone, so flipping the
+     * switch does not reorder the Library under the finger doing the flipping.
+     */
+    suspend fun setEnabled(id: String, enabled: Boolean) {
+        get(id)?.let { upsert(it.copy(enabled = enabled)) }
+    }
     /**
      * Installs any bundled starter the user has not been offered before. Safe to call on every
      * launch: it adds nothing twice, and never resurrects a starter the user deleted.

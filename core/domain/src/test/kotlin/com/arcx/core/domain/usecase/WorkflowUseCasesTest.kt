@@ -60,6 +60,59 @@ class WorkflowUseCasesTest {
         assertEquals(true, repo.pinned["w1"])
     }
 
+    // -- Switching a workflow off ---------------------------------------------------------------
+
+    @Test
+    fun `toggling enabled switches a workflow off and back on`() = runTest {
+        val workflow = Workflow(id = "w1", name = "A", prompt = "p")
+        val repo = FakeWorkflowRepository(listOf(workflow))
+
+        ToggleEnabledUseCase(repo)(workflow)
+        assertFalse(repo.stored.value["w1"]!!.enabled)
+
+        ToggleEnabledUseCase(repo)(repo.stored.value["w1"]!!)
+        assertTrue(repo.stored.value["w1"]!!.enabled)
+    }
+
+    /**
+     * Off is not delete, and this is the assertion that says so: the row, its name, its prompt and
+     * its place in the library are all exactly as they were. Nothing cascades to history either —
+     * nothing ever has, since a run keeps its own copy of what it ran.
+     */
+    @Test
+    fun `switching a workflow off changes nothing but the switch`() = runTest {
+        val workflow = Workflow(
+            id = "w1",
+            name = "Fix Grammar",
+            prompt = "p",
+            isPinned = true,
+            isFavorite = true,
+            sortOrder = 3,
+            createdAt = 5L,
+        )
+        val repo = FakeWorkflowRepository(listOf(workflow))
+
+        ToggleEnabledUseCase(repo)(workflow)
+
+        assertEquals(workflow.copy(enabled = false), repo.stored.value["w1"])
+        assertNull("switching off deleted the workflow", repo.deleted)
+    }
+
+    /**
+     * A copy of something switched off arrives switched on. The user asked for it just now; one
+     * that appeared in no picker would read as the duplicate having failed.
+     */
+    @Test
+    fun `a duplicate of a switched-off workflow arrives switched on`() = runTest {
+        val off = Workflow(id = "w1", name = "Quiet", prompt = "p", enabled = false)
+        val repo = FakeWorkflowRepository(listOf(off))
+
+        val copy = DuplicateWorkflowUseCase(repo, SaveWorkflowUseCase(repo, time))("w1")!!
+
+        assertTrue(copy.enabled)
+        assertFalse("the original was changed", repo.stored.value["w1"]!!.enabled)
+    }
+
     @Test
     fun `duplicate makes an editable copy of a built-in`() = runTest {
         val builtIn = Workflow(

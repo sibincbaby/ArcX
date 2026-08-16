@@ -14,6 +14,7 @@ internal fun AiError.title(): String = when (this) {
     is AiError.Network -> "Couldn't reach the provider"
     is AiError.ContentBlocked -> "Request was blocked"
     is AiError.NoProvider -> "No provider connected"
+    is AiError.Disabled -> "$workflowName is switched off"
     is AiError.NoInput -> "Nothing to work on"
     is AiError.NoScreenshot ->
         if (captureAvailable) "Nothing to look at" else "Couldn't capture the screen"
@@ -31,6 +32,13 @@ internal fun AiError.body(): String = when (this) {
     is AiError.Network -> "Check your connection."
     is AiError.ContentBlocked -> reason
     is AiError.NoProvider -> "Connect a provider first."
+    // Names the shortcut, because that is usually how the user got here: a switched-off workflow
+    // is in no picker, so something outside ArcX fired it. Worded to stay true when it was fired
+    // from the Library instead, which is the one place a switched-off workflow is still shown.
+    is AiError.Disabled ->
+        "Switched-off workflows stay in your Library but run from nowhere — and a shortcut, " +
+            "widget or link can still point at one. Turn it back on in Library to use it again."
+
     is AiError.NoInput ->
         "Select or copy some text first, then run this workflow again."
 

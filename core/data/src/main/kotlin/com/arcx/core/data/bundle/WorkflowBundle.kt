@@ -69,6 +69,12 @@ fun encodeWorkflowBundle(bundle: WorkflowBundle): String = bundleJson.encodeToSt
  * migration that will never run again to clean it up. A non-empty icon is left completely alone,
  * emoji included: a user's own emoji surviving is deliberate.
  *
+ * `enabled` needs no entry because [com.arcx.core.model.WorkflowSpec] has no such field: a bundle
+ * cannot carry a switched-off workflow, so there is nothing to clear. That is stronger than
+ * stripping it would be — a key that does not exist cannot be honoured by a later reader who
+ * forgets this table. See `WorkflowSpec`'s own doc for why an invisible import is the worst case
+ * of all of these.
+ *
  * What is *not* here, deliberately: clamping `maxTokens`, `name` or prompt sizes, and whether
  * `model` survives at all. Those are product decisions (docs/workflow-sharing.md §8), not
  * refactoring.
@@ -154,6 +160,10 @@ fun WorkflowSpec.toWorkflowAsImport(): Workflow = sanitisedForImport().let { spe
  * `isPinned`, `isFavorite` and `sortOrder` still travel: they are the author's arrangement of their
  * own library, and this file is also the user's backup of it. Nothing downstream trusts them —
  * [sanitisedForImport] clears all three on the way back in.
+ *
+ * A switched-off workflow **is** exported, and arrives switched on. Skipping it would make the
+ * backup quietly incomplete, which is the one thing a backup may not be; and `enabled` has no field
+ * in the format to travel in, so there is nothing here to drop.
  */
 fun Workflow.toSpec(): WorkflowSpec = WorkflowSpec(
     name = name,

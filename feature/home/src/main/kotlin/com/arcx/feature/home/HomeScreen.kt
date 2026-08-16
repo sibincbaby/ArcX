@@ -1,66 +1,43 @@
 package com.arcx.feature.home
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.automirrored.outlined.ViewSidebar
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Cancel
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.Replay
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -68,33 +45,39 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arcx.core.designsystem.component.ArcxListRow
 import com.arcx.core.designsystem.component.ArcxListRowIconSize
-import com.arcx.core.designsystem.component.ArcxPill
-import com.arcx.core.designsystem.component.ArcxSearchField
 import com.arcx.core.designsystem.component.EmptyState
 import com.arcx.core.designsystem.component.ErrorCard
 import com.arcx.core.designsystem.component.LoadingState
+import com.arcx.core.designsystem.component.NoticeCard
+import com.arcx.core.designsystem.component.NoticeSeverity
+import com.arcx.core.designsystem.component.SectionHeader
+import com.arcx.core.designsystem.component.TintedIcon
 import com.arcx.core.designsystem.component.WorkflowIcon
 import com.arcx.core.designsystem.format.formatDuration
 import com.arcx.core.designsystem.format.relativeTime
-import com.arcx.core.designsystem.theme.ArcXCorner
 import com.arcx.core.designsystem.theme.MetaTextStyle
 import com.arcx.core.designsystem.theme.Motion
 import com.arcx.core.designsystem.theme.Spacing
-import com.arcx.core.designsystem.theme.tint
 import com.arcx.core.designsystem.theme.warningTint
+import com.arcx.core.model.RunStatus
 import com.arcx.core.model.RunSummary
 
-private const val GRID_COLUMNS = 3
+/**
+ * 18dp beside a `titleSmall` row, 16dp inside a notice — icon sizes, which are not spacing and are
+ * deliberately absent from the [Spacing] scale. Named here so the three glyphs on this screen
+ * cannot drift the way the five list rows once did.
+ */
+private val StatusIconSize = 18.dp
+private val InlineGlyphSize = 16.dp
 
 @Composable
 fun HomeRoute(
-    onRunWorkflow: (String) -> Unit,
-    onEditWorkflow: (String) -> Unit,
     onCreateWorkflow: () -> Unit,
-    onSeeAllWorkflows: () -> Unit,
     onSeeActivity: () -> Unit,
+    /** Opens Activity with this run's detail sheet — where its error, and Run again, already live. */
+    onOpenRun: (String) -> Unit,
     onOpenSettings: () -> Unit,
-    /** Called with the subject of the chip that was tapped; see [SurfaceSubject]. */
+    /** Called with the subject of the row that was tapped; see [SurfaceSubject]. */
     onOpenSurfaceSettings: (SurfaceSubject) -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -107,87 +90,66 @@ fun HomeRoute(
 
     HomeScreen(
         state = state,
-        onQueryChange = viewModel::onQueryChange,
-        onRunWorkflow = onRunWorkflow,
-        onEditWorkflow = onEditWorkflow,
         onCreateWorkflow = onCreateWorkflow,
-        onSeeAllWorkflows = onSeeAllWorkflows,
         onSeeActivity = onSeeActivity,
+        onOpenRun = onOpenRun,
         onOpenSettings = onOpenSettings,
         onOpenSurfaceSettings = onOpenSurfaceSettings,
     )
 }
 
 /**
- * One tap runs. A long press configures. There is no menu in between here or anywhere else —
- * the grid, the library, the picker and the bubble all obey the same two gestures, so the
- * fastest thing in the product never costs two taps.
+ * The status screen: is ArcX reachable right now, and what did it just do.
+ *
+ * Nothing here runs a workflow, and that is the point rather than an omission. A run fired from
+ * Home has no selection to read and no other app's screen to look at — ArcX's own window is what is
+ * in front — so the input silently degrades to the clipboard, and "summarise what's on screen"
+ * summarises ArcX. Every honest way to start a run is somewhere else, which is what the list of
+ * ways in is for.
+ *
+ * Four situations, each drawn deliberately, because a status screen is only as good as its worst
+ * state:
+ *
+ *  1. **No provider.** Nothing downstream can happen, so nothing downstream is shown. Four ways in
+ *     reported as "on" above a prompt that cannot be answered would be four true statements adding
+ *     up to a lie.
+ *  2. **Something broke.** A card per broken surface, above everything, each one tap from the
+ *     screen that owns its fix.
+ *  3. **Healthy, with runs.** No amber anywhere, because nothing is wrong. The two lists and
+ *     nothing else.
+ *  4. **Healthy, nothing run yet.** The one state where a suggestion earns its place — and the
+ *     suggestion names a way in that is working *now*, not the app the user is already looking at.
  */
 @Composable
 private fun HomeScreen(
     state: HomeUiState,
-    onQueryChange: (String) -> Unit,
-    onRunWorkflow: (String) -> Unit,
-    onEditWorkflow: (String) -> Unit,
     onCreateWorkflow: () -> Unit,
-    onSeeAllWorkflows: () -> Unit,
     onSeeActivity: () -> Unit,
+    onOpenRun: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenSurfaceSettings: (SurfaceSubject) -> Unit,
 ) {
-    var searchOpen by remember { mutableStateOf(false) }
-
-    Scaffold(
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onCreateWorkflow,
-                icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                text = { Text("New") },
-            )
-        },
-    ) { padding ->
+    Scaffold { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            // 96dp is off the spacing scale on purpose: it is the extended FAB plus its margin,
-            // so the last recent run can still be read instead of sitting under the button.
-            contentPadding = PaddingValues(bottom = 96.dp),
+            contentPadding = PaddingValues(bottom = Spacing.Xxl),
         ) {
             item(key = "header") {
                 Header(
                     greeting = state.greeting,
-                    subtitle = state.subtitle,
-                    searchOpen = searchOpen,
-                    onToggleSearch = {
-                        searchOpen = !searchOpen
-                        if (!searchOpen) onQueryChange("")
-                    },
+                    // Blank until the first read lands. "0 workflows · 0 runs today" is a claim,
+                    // and on a cold start it is one this screen has no basis for yet.
+                    subtitle = if (state.loading) "" else subtitleFor(state),
                     onOpenSettings = onOpenSettings,
                 )
             }
 
-            // Always emitted, visibility animated: adding and removing the item outright made
-            // the whole grid below it jump by the height of a text field.
-            item(key = "search") {
-                AnimatedVisibility(
-                    visible = searchOpen,
-                    enter = expandVertically(tween(Motion.Emphasis, easing = Motion.Decelerate)) +
-                        fadeIn(tween(Motion.Medium)),
-                    exit = shrinkVertically(tween(Motion.Medium, easing = Motion.Accelerate)) +
-                        fadeOut(tween(Motion.Fast)),
-                ) {
-                    ArcxSearchField(
-                        query = state.query,
-                        onQueryChange = onQueryChange,
-                        placeholder = "Search workflows",
-                    )
-                }
-            }
-
             when {
-                // Ahead of the empty states: a failed read leaves the grid just as empty as a
-                // fresh install does, and "No workflows yet" would be blaming the user for it.
+                // Ahead of every empty state: a failed read leaves this screen exactly as bare as
+                // a fresh install does, and "no provider connected" would be blaming the user's
+                // setup for the app's problem.
                 state.error != null -> item(key = "error") {
                     ErrorCard(
                         title = "Couldn't load your workflows",
@@ -199,109 +161,128 @@ private fun HomeScreen(
                     )
                 }
 
-                // Not a blank screen. An empty Home and a Home whose first read is still in
-                // flight look identical, and the grid is what a user opens the app to reach.
+                // Not a blank screen. An unconfigured ArcX and one whose first read is still in
+                // flight look identical, and one of the two is an accusation.
                 state.loading -> item(key = "loading") { LoadingState() }
 
-                state.libraryIsEmpty -> item(key = "first-run") {
+                // State 1. The whole screen, because everything else is downstream of this.
+                !state.providerReady -> item(key = "no-provider") {
+                    EmptyState(
+                        icon = Icons.Outlined.CloudOff,
+                        title = "No provider connected",
+                        body = "ArcX runs on your own API key and has nowhere to send a prompt " +
+                            "yet. Connect a provider and every way into ArcX starts working at " +
+                            "once.",
+                        actionLabel = "Connect a provider",
+                        onAction = onOpenSettings,
+                    )
+                }
+
+                // A library emptied out by hand. Starters are installed on first launch, so this is
+                // rare — but the ways in below would all lead to an empty picker, so it is the same
+                // kind of dead end as having no provider and gets the same treatment.
+                state.workflowCount == 0 -> item(key = "no-workflows") {
                     EmptyState(
                         icon = Icons.Outlined.AutoAwesome,
                         title = "No workflows yet",
-                        body = "Build an AI action once — rewrite, summarise, translate — " +
-                            "then fire it from anywhere on your phone.",
+                        body = "Build an AI action once — rewrite, summarise, translate — then " +
+                            "fire it from anywhere on your phone.",
                         actionLabel = "Create your first workflow",
                         onAction = onCreateWorkflow,
                     )
                 }
 
-                state.tiles.isEmpty() && state.searching -> item(key = "no-matches") {
-                    EmptyState(
-                        icon = Icons.Outlined.Search,
-                        title = "No matches",
-                        body = "Nothing in your library matches “${state.query.trim()}”.",
-                        actionLabel = "See all workflows",
-                        onAction = onSeeAllWorkflows,
-                    )
-                }
+                else -> {
+                    // State 2, above everything else it would otherwise be buried under. One card
+                    // per broken surface rather than one card summarising them, so each carries the
+                    // remedy that actually applies to it and each reaches its own fix in one tap.
+                    // There have never been more than two at once; there are only two that can
+                    // break at all.
+                    items(
+                        items = state.surfaces.filter { it.state == SurfaceState.BROKEN },
+                        key = { "broken-${it.subject}" },
+                    ) { surface ->
+                        NoticeCard(
+                            severity = NoticeSeverity.Warning,
+                            title = "${surface.label} has stopped",
+                            message = surface.remedy.orEmpty(),
+                            icon = Icons.Outlined.ErrorOutline,
+                            actionLabel = "Fix this",
+                            onAction = { onOpenSurfaceSettings(surface.subject) },
+                            // Fading and settling rather than snapping. This card's whole life is
+                            // the round trip out to system Settings and back: onResume re-reads the
+                            // permission, so it disappears the moment the user returns having
+                            // granted it, and the list under it moves up by a card's height.
+                            modifier = Modifier
+                                .animateItem(
+                                    fadeInSpec = tween(Motion.Medium, easing = Motion.Standard),
+                                    placementSpec = tween(
+                                        Motion.Emphasis,
+                                        easing = Motion.Decelerate,
+                                    ),
+                                    fadeOutSpec = tween(Motion.Fast, easing = Motion.Accelerate),
+                                )
+                                .padding(horizontal = Spacing.Gutter, vertical = Spacing.Sm),
+                        )
+                    }
 
-                else -> item(key = "grid") {
-                    // A fixed handful of tiles, so a plain chunked column beats a nested
-                    // LazyVerticalGrid and the scroll stays owned by one list.
-                    TileGrid(
-                        tiles = state.tiles,
-                        onRun = onRunWorkflow,
-                        onConfigure = onEditWorkflow,
-                        onAdd = onCreateWorkflow,
-                    )
-                }
-            }
+                    // "Ways in", the same words Entry points uses for the same six things. The
+                    // sketch this came from said "Ready", which stops being true the moment one of
+                    // them is not — a heading should not have to be re-read to be believed.
+                    item(key = "ways-in") { SectionHeader("Ways in") }
+                    itemsIndexed(
+                        items = state.surfaces,
+                        key = { _, surface -> "surface-${surface.subject}" },
+                    ) { index, surface ->
+                        SurfaceRow(
+                            status = surface,
+                            showDivider = index < state.surfaces.lastIndex,
+                            onClick = { onOpenSurfaceSettings(surface.subject) },
+                        )
+                    }
 
-            if (state.surfaces.isNotEmpty() && !state.searching) {
-                item(key = "surfaces") {
-                    SurfaceStrip(chips = state.surfaces, onClick = onOpenSurfaceSettings)
+                    if (state.recentRuns.isEmpty()) {
+                        // State 4. No heading above it: "Recent" over an empty box is a section
+                        // that failed to load, and this is not one.
+                        item(key = "no-runs") {
+                            val sidebarLive = state.surfaces.any {
+                                it.subject == SurfaceSubject.SIDEBAR &&
+                                    it.state == SurfaceState.LIVE
+                            }
+                            EmptyState(
+                                icon = Icons.Outlined.Bolt,
+                                title = "Nothing has run yet",
+                                body = firstRunHint(sidebarLive),
+                                // Offered only when there is something left to set up. With the
+                                // sidebar already out, the sentence above names two ways in that
+                                // work this second, and a button would be sending the user off to
+                                // change a setting that is already right.
+                                actionLabel = if (sidebarLive) null else "Turn on the sidebar",
+                                onAction = if (sidebarLive) {
+                                    null
+                                } else {
+                                    { onOpenSurfaceSettings(SurfaceSubject.SIDEBAR) }
+                                },
+                            )
+                        }
+                    } else {
+                        item(key = "recent") {
+                            SectionHeader(
+                                title = "Recent",
+                                actionLabel = "See all",
+                                onAction = onSeeActivity,
+                            )
+                        }
+                        recentRuns(state.recentRuns, state.nowMillis, onOpenRun)
+                    }
                 }
-            }
-
-            if (state.recentRuns.isNotEmpty()) {
-                item(key = "recent-header") {
-                    RecentHeader(onSeeActivity = onSeeActivity)
-                }
-                recentRuns(state.recentRuns, state.nowMillis, onRunWorkflow)
             }
         }
     }
 }
 
-private fun LazyListScope.recentRuns(
-    runs: List<RunSummary>,
-    nowMillis: Long,
-    onRerun: (String) -> Unit,
-) {
-    itemsIndexed(runs, key = { _, run -> "run-${run.id}" }) { index, run ->
-        ArcxListRow(
-            title = run.workflowName,
-            modifier = Modifier.animateItem(),
-            leading = { WorkflowIcon(icon = run.workflowIcon, size = ArcxListRowIconSize) },
-            subtitle = {
-                Text(
-                    text = runSubtitle(run, nowMillis),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            trailing = {
-                Text(
-                    text = formatDuration(run.durationMs),
-                    style = MetaTextStyle,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-                // The row itself stays inert and the replay button keeps its own target: a tap
-                // anywhere on a recent run would fire the workflow, which is not something to
-                // do by brushing a list on the way past.
-                IconButton(onClick = { onRerun(run.workflowId) }) {
-                    Icon(
-                        imageVector = Icons.Outlined.Replay,
-                        contentDescription = "Run ${run.workflowName} again",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            },
-            showDivider = index < runs.lastIndex,
-        )
-    }
-}
-
 @Composable
-private fun Header(
-    greeting: String,
-    subtitle: String,
-    searchOpen: Boolean,
-    onToggleSearch: () -> Unit,
-    onOpenSettings: () -> Unit,
-) {
+private fun Header(greeting: String, subtitle: String, onOpenSettings: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -317,13 +298,8 @@ private fun Header(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        IconButton(onClick = onToggleSearch) {
-            Icon(
-                imageVector = if (searchOpen) Icons.Outlined.Close else Icons.Outlined.Search,
-                contentDescription = if (searchOpen) "Close search" else "Search workflows",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        // The only way into Settings in the whole app — it left the bottom bar to give the four
+        // tabs their width back.
         IconButton(onClick = onOpenSettings) {
             Icon(
                 imageVector = Icons.Outlined.Settings,
@@ -334,254 +310,222 @@ private fun Header(
     }
 }
 
+/**
+ * One way in, as a row rather than the chip it used to be.
+ *
+ * The strip of chips this replaces could only ever say a word; a row has room for what the surface
+ * is *for*, which is the difference between reporting a state and being usable by someone who has
+ * not read Settings. [ArcxListRow] brings the 48dp target and `Role.Button` with it.
+ *
+ * The state is a word — "On", "Always on", "Off", "Not working" — not only a colour and a tint, so
+ * a screen reader hears it as part of the row and nobody has to distinguish amber from primary.
+ * That is the same guarantee `SurfaceRow` on Entry points buys with `stateDescription`, taken here
+ * by simply saying it out loud, which has the advantage of also being visible.
+ */
 @Composable
-private fun TileGrid(
-    tiles: List<HomeTile>,
-    onRun: (String) -> Unit,
-    onConfigure: (String) -> Unit,
-    onAdd: () -> Unit,
-) {
-    // The add cell is one more item in the same flow, so it lands wherever the grid happens to
-    // end rather than being pinned to a corner that may be empty.
-    val cells = tiles.size + 1
-    Column(
-        modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Sm),
-        // 9dp stays off the 4dp scale. The three columns are whatever is left after the gutters
-        // and these two gaps, so moving to 8 or 12 resizes every tile on the screen — which is
-        // exactly the re-layout adopting the scale is meant to avoid.
-        verticalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        (0 until cells step GRID_COLUMNS).forEach { start ->
-            // Intrinsic height rather than a fixed one: a two-line workflow name at a large
-            // font scale needs more than 104dp, and a fixed box clips the duration line off
-            // the bottom of exactly the tiles that have been run most.
-            Row(
-                modifier = Modifier.height(IntrinsicSize.Max),
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
-            ) {
-                (start until start + GRID_COLUMNS).forEach { index ->
-                    when {
-                        index < tiles.size -> WorkflowTile(
-                            tile = tiles[index],
-                            onRun = { onRun(tiles[index].workflow.id) },
-                            onConfigure = { onConfigure(tiles[index].workflow.id) },
-                        )
-
-                        index == tiles.size -> AddTile(onAdd)
-                        // Keeps the last row's tiles at column width instead of stretching them.
-                        else -> Spacer(Modifier.weight(1f))
-                    }
-                }
-            }
-        }
+private fun SurfaceRow(status: SurfaceStatus, showDivider: Boolean, onClick: () -> Unit) {
+    val warning = warningTint()
+    val broken = status.state == SurfaceState.BROKEN
+    val working = status.state == SurfaceState.LIVE || status.state == SurfaceState.ALWAYS_ON
+    val accent = when {
+        broken -> warning.content
+        working -> MaterialTheme.colorScheme.primary
+        // An "off" surface is a decision the user made, so it is drawn as calmly as one. Amber
+        // here would mean the screen nags about four choices and has nothing louder left for the
+        // one thing that is actually wrong.
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
-}
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun RowScope.WorkflowTile(
-    tile: HomeTile,
-    onRun: () -> Unit,
-    onConfigure: () -> Unit,
-) {
-    val workflow = tile.workflow
-    val shape = MaterialTheme.shapes.large
-    Surface(
-        // Clip before clickable so the ripple stops at the rounded corner.
-        modifier = Modifier
-            .weight(1f)
-            .fillMaxHeight()
-            .heightIn(min = 104.dp)
-            .minimumInteractiveComponentSize()
-            .clip(shape)
-            .combinedClickable(role = Role.Button, onClick = onRun, onLongClick = onConfigure),
-        shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
-        Column(
-            // 11dp horizontal is a dp off Md and stays there: it is what sets the column width
-            // in the tightest grid in the app, so widening it re-wraps the two-line names.
-            modifier = Modifier.padding(horizontal = 11.dp, vertical = Spacing.Md),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            val tint = workflow.category.tint()
-            WorkflowIcon(
-                icon = workflow.icon,
-                size = 34.dp,
-                container = tint.container,
-                content = tint.content,
+    ArcxListRow(
+        title = status.label,
+        leading = {
+            TintedIcon(
+                icon = status.subject.icon(),
+                container = when {
+                    broken -> warning.container
+                    working -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                    else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                },
+                content = accent,
+                size = ArcxListRowIconSize,
             )
-            Column {
+        },
+        subtitle = {
+            Text(
+                text = status.detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        trailing = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
+            ) {
+                if (broken) {
+                    Icon(
+                        imageVector = Icons.Outlined.ErrorOutline,
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(InlineGlyphSize),
+                    )
+                }
                 Text(
-                    text = workflow.name,
+                    text = status.state.word(),
                     style = MaterialTheme.typography.labelLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = tile.averageMs?.let { "${formatDuration(it)} avg" } ?: "not run yet",
-                    style = MetaTextStyle,
-                    color = MaterialTheme.colorScheme.outline,
-                    maxLines = 1,
-                    // The tile is the narrowest column in the app, so at a large font scale this
-                    // line runs out of room too — without this it stops mid-word ("not run") and
-                    // reads as a different, wrong sentence rather than as truncated text.
-                    overflow = TextOverflow.Ellipsis,
+                    color = accent,
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun RowScope.AddTile(onClick: () -> Unit) {
-    val outline = MaterialTheme.colorScheme.outlineVariant
-    Column(
-        modifier = Modifier
-            .weight(1f)
-            .fillMaxHeight()
-            .heightIn(min = 104.dp)
-            .minimumInteractiveComponentSize()
-            .clip(MaterialTheme.shapes.large)
-            .dashedOutline(outline)
-            .clickable(role = Role.Button, onClick = onClick),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.Add,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = "Add tile",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-/** Dashed so the empty cell reads as a slot to fill, not a tile that failed to load. */
-private fun Modifier.dashedOutline(color: Color) = drawBehind {
-    drawRoundRect(
-        color = color,
-        // The raw radius rather than `MaterialTheme.shapes.large`, because drawRoundRect takes a
-        // number — the same card tier the filled tiles beside it are clipped to.
-        cornerRadius = CornerRadius(ArcXCorner.Card.toPx()),
-        style = Stroke(
-            width = 1.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10.dp.toPx(), 7.dp.toPx())),
-        ),
+        },
+        onClick = onClick,
+        showDivider = showDivider,
     )
 }
 
-@Composable
-private fun SurfaceStrip(chips: List<SurfaceChip>, onClick: (SurfaceSubject) -> Unit) {
-    val warning = warningTint()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = Spacing.Gutter, vertical = Spacing.Md),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
-    ) {
-        chips.forEach { chip ->
-            val content = when (chip.state) {
-                SurfaceState.LIVE -> MaterialTheme.colorScheme.primary
-                SurfaceState.OFF -> warning.content
-                SurfaceState.ALWAYS_ON -> MaterialTheme.colorScheme.onSurfaceVariant
-            }
-            // A dot for something that is running, a warning glyph for something that is not,
-            // and nothing at all for the two surfaces the manifest guarantees — a mark on those
-            // would be reporting a state that cannot change.
-            val mark: (@Composable () -> Unit)? = when (chip.state) {
-                SurfaceState.LIVE -> {
-                    {
-                        Box(
-                            Modifier
-                                .size(6.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(content),
-                        )
-                    }
+/**
+ * The last few runs. Tapping one opens it in Activity, where the full error, the input it was
+ * given and "Run again" already live — a second copy of that sheet on Home would be a second
+ * answer to the same question, free to drift from the first.
+ *
+ * There is no re-run button here, unlike the strip this replaces. Re-running from Home is the one
+ * context in which a workflow cannot see what it was written to act on.
+ */
+private fun LazyListScope.recentRuns(
+    runs: List<RunSummary>,
+    nowMillis: Long,
+    onOpenRun: (String) -> Unit,
+) {
+    itemsIndexed(runs, key = { _, run -> "run-${run.id}" }) { index, run ->
+        val failed = run.status == RunStatus.FAILED
+        val warning = warningTint()
+        ArcxListRow(
+            title = run.workflowName,
+            // Five rows, so unlike Activity's thousand this costs nothing — and every completed
+            // run pushes all of them down by one, which is a move worth watching rather than
+            // a list that flinches.
+            modifier = Modifier.animateItem(
+                fadeInSpec = tween(Motion.Medium, easing = Motion.Standard),
+                placementSpec = tween(Motion.Emphasis, easing = Motion.Decelerate),
+                fadeOutSpec = tween(Motion.Fast, easing = Motion.Accelerate),
+            ),
+            leading = {
+                WorkflowIcon(
+                    icon = run.workflowIcon,
+                    size = ArcxListRowIconSize,
+                    container = if (failed) {
+                        warning.container
+                    } else {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    },
+                )
+            },
+            subtitle = {
+                Text(
+                    text = runSubtitle(run, nowMillis),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (failed) {
+                        warning.content
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            trailing = {
+                // A failure's duration says nothing useful, so the row spends that space on why —
+                // the same trade Activity's own list makes.
+                if (!failed) {
+                    Text(
+                        text = formatDuration(run.durationMs),
+                        style = MetaTextStyle,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                    Spacer(Modifier.width(Spacing.Sm))
                 }
-
-                SurfaceState.OFF -> {
-                    {
-                        Icon(
-                            imageVector = Icons.Outlined.ErrorOutline,
-                            contentDescription = null,
-                            tint = content,
-                            modifier = Modifier.size(14.dp),
-                        )
-                    }
-                }
-
-                SurfaceState.ALWAYS_ON -> null
-            }
-
-            ArcxPill(
-                label = chip.label,
-                // Every chip is a way into the setting behind it, including the two that cannot
-                // change: "Share" and "Selection" report a state nobody can act on, but the rows
-                // that describe them are still worth reaching. What differs per chip is where
-                // that setting lives, which is the caller's decision to make.
-                onClick = { onClick(chip.subject) },
-                leading = mark,
-                container = when (chip.state) {
-                    SurfaceState.LIVE -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                    SurfaceState.OFF -> warning.container
-                    SurfaceState.ALWAYS_ON -> Color.Unspecified
-                },
-                content = content,
-                // Nothing in this strip has an edge. Said out loud because the two surfaces the
-                // manifest guarantees are the only chips here with no wash, so left to infer they
-                // would be the only bordered thing in the row — louder than the chips that are
-                // actually reporting a state.
-                outlined = false,
-            )
-        }
+                StatusIcon(run.status)
+            },
+            onClick = { onOpenRun(run.id) },
+            showDivider = index < runs.lastIndex,
+        )
     }
 }
 
+/** Described, never only tinted: green tick and amber cross are the same glyph to a screen reader. */
 @Composable
-private fun RecentHeader(onSeeActivity: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            // 10dp above is off the scale and left there: it is what sits the heading a hair
-            // closer to the runs it names than to the strip above it.
-            .padding(
-                start = Spacing.Gutter,
-                end = Spacing.Gutter,
-                top = 10.dp,
-                bottom = Spacing.Xs,
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "Recent runs",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            text = "Activity",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            // One word of labelLarge with 4dp under it is a 28dp target, and this is the only
-            // way from Home into the full history.
-            modifier = Modifier
-                .minimumInteractiveComponentSize()
-                .clip(MaterialTheme.shapes.small)
-                .clickable(role = Role.Button, onClick = onSeeActivity)
-                .padding(horizontal = Spacing.Sm, vertical = Spacing.Xs),
-        )
+private fun StatusIcon(status: RunStatus) {
+    Icon(
+        imageVector = when (status) {
+            RunStatus.SUCCESS -> Icons.Outlined.CheckCircle
+            RunStatus.FAILED -> Icons.Outlined.ErrorOutline
+            RunStatus.CANCELLED -> Icons.Outlined.Cancel
+        },
+        contentDescription = when (status) {
+            RunStatus.SUCCESS -> "Succeeded"
+            RunStatus.FAILED -> "Failed"
+            RunStatus.CANCELLED -> "Cancelled"
+        },
+        modifier = Modifier.size(StatusIconSize),
+        tint = when (status) {
+            RunStatus.SUCCESS -> MaterialTheme.colorScheme.primary
+            RunStatus.FAILED -> warningTint().content
+            RunStatus.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+    )
+}
+
+/** The same glyphs Entry points draws for the same six things, so one screen teaches the other. */
+private fun SurfaceSubject.icon(): ImageVector = when (this) {
+    SurfaceSubject.SIDEBAR -> Icons.AutoMirrored.Outlined.ViewSidebar
+    SurfaceSubject.SHARE -> Icons.Outlined.Share
+    SurfaceSubject.SELECTION -> Icons.Outlined.TextFields
+    SurfaceSubject.SCREEN_TEXT -> Icons.Outlined.Visibility
+}
+
+private fun SurfaceState.word(): String = when (this) {
+    SurfaceState.LIVE -> "On"
+    SurfaceState.ALWAYS_ON -> "Always on"
+    SurfaceState.OFF -> "Off"
+    // Not "Off". The user did switch this on; saying otherwise sends them to turn on something
+    // the system already insists is on, which is the loop this wording exists to break.
+    SurfaceState.BROKEN -> "Not working"
+}
+
+/**
+ * What to do first, naming a way in that works *right now*.
+ *
+ * Generic advice would be worse than none here: telling someone to swipe out a sidebar they have
+ * switched off is how a first-run hint teaches a user that the app is lying to them. The selection
+ * menu is the fallback because the manifest guarantees it — it is the one suggestion that can never
+ * be wrong.
+ */
+private fun firstRunHint(sidebarLive: Boolean): String {
+    val opener = if (sidebarLive) {
+        "Swipe out the sidebar from the edge of any app, or highlight some text and pick ArcX " +
+            "from the popup."
+    } else {
+        "Highlight some text in any app and pick ArcX from the popup, or share a page to ArcX."
     }
+    return "$opener Whatever you fire, and wherever from, lands here."
+}
+
+private fun subtitleFor(state: HomeUiState): String {
+    val workflows = "${state.workflowCount} " +
+        if (state.workflowCount == 1) "workflow" else "workflows"
+    val runs = "${state.runsToday} " + if (state.runsToday == 1) "run" else "runs"
+    return "$workflows · $runs today"
 }
 
 private fun runSubtitle(run: RunSummary, nowMillis: Long): String {
-    val source = run.model.ifBlank { run.providerLabel }.ifBlank { "no provider" }
-    return "${relativeTime(run.startedAt, nowMillis)} · $source"
+    // A failed run leads with why it failed. The mapper has already cut the error to one line, and
+    // that line is the only part of a failure worth a list row — the rest is in the sheet a tap
+    // away. The model name a success shows is worthless here: nothing failed for want of it.
+    val detail = if (run.status == RunStatus.FAILED) {
+        run.error.orEmpty().ifBlank { "failed" }
+    } else {
+        run.model.ifBlank { run.providerLabel }.ifBlank { "no provider" }
+    }
+    return "${relativeTime(run.startedAt, nowMillis)} · $detail"
 }

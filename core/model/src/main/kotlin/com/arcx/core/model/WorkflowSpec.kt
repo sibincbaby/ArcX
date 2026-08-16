@@ -21,6 +21,18 @@ import kotlinx.serialization.Serializable
  * live here: they are wire concerns that nothing ever draws, and putting a type holding a `List`
  * in this package would widen the stability promise for no benefit. They are in `:core:data`,
  * beside the repository that owns parsing.
+ *
+ * **[Workflow.enabled] is deliberately not here**, so a bundle cannot carry it in either direction.
+ * A file that could arrive switched off would install something the importer cannot see in any
+ * picker and was never told about — the strongest version of the problem `sanitisedForImport`
+ * exists for, since unlike a bad `sortOrder` there is nothing on screen to notice. Leaving the
+ * field out of the format is stronger than stripping it on the way in: there is no key to honour
+ * later by mistake. A hand-written file that sets `"enabled": false` anyway is dropped by
+ * `ignoreUnknownKeys` and imports switched on, which `WorkflowBundleTest` pins.
+ *
+ * Nothing is lost the format did not already lose: `isPinned`, `isFavorite` and `sortOrder` travel
+ * but are cleared on import for the same reason, so an export has never restored the author's
+ * arrangement of their own library.
  */
 @Serializable
 data class WorkflowSpec(

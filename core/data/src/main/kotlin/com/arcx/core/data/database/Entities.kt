@@ -1,5 +1,6 @@
 package com.arcx.core.data.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -26,6 +27,17 @@ data class WorkflowEntity(
     val isPinned: Boolean,
     val isFavorite: Boolean,
     val isBuiltIn: Boolean,
+    /**
+     * See [com.arcx.core.model.Workflow.enabled]. Every picker query filters on it.
+     *
+     * The declared default is not decoration. `MIGRATION_3_4` has to add this column with
+     * `DEFAULT 1` — that is what backfills every existing row as switched on — and Room validates
+     * the migrated table against the one it would have created itself. Without the same default
+     * here, a fresh install and an upgraded one describe the same column differently, which is
+     * the shape of mismatch that only shows up on someone else's phone, months later.
+     */
+    @ColumnInfo(defaultValue = "1")
+    val enabled: Boolean,
     val sortOrder: Int,
     val createdAt: Long,
     val updatedAt: Long,

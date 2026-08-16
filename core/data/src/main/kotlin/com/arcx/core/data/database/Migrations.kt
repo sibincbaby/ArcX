@@ -70,3 +70,23 @@ internal val MIGRATION_2_3 = object : Migration(2, 3) {
         }
     }
 }
+
+/**
+ * Adds [WorkflowEntity.enabled], the per-workflow on/off switch.
+ *
+ * `DEFAULT 1` is the entire migration and it is the only part that can go wrong. Every row that
+ * already exists is a workflow the user has been using, so all of them must come out switched on:
+ * a default of 0 would empty the runner's picker, the sidebar panel, the widget and the launcher's
+ * shortcut menu on an ordinary app update, with the Library the only place left showing anything
+ * and no event the user could connect it to. There is no undo for that beyond flipping every row
+ * back by hand.
+ *
+ * `NOT NULL DEFAULT 1` rather than a nullable column because Room maps this to a non-null Boolean,
+ * and SQLite backfills existing rows with the default as part of the ALTER — one statement, no
+ * table rebuild, so the runs table and its screenshots are untouched.
+ */
+internal val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL("ALTER TABLE workflows ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
+    }
+}
