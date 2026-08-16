@@ -99,7 +99,20 @@ fun ArcxListRow(
                     subtitle()
                 }
             }
-            trailing?.invoke(this)
+            if (trailing != null) {
+                // Mirrors the leading gap, and conditional for the same reason it is: the title
+                // column is weighted, so an unconditional spacer would take 12dp off it on every
+                // row in all five lists — including the ones with nothing on the right, where it
+                // would only move the ellipsis in for no gain.
+                //
+                // Without it the two collide. Measured on an S25 at fontScale 1.8 an Activity
+                // title ended at x=772 and its "23.6s" began at x=781, and because trailing is
+                // centred against the whole row it sits level with the gap between title and
+                // subtitle — so 3dp of air reads as one run-together string rather than two
+                // columns.
+                Spacer(Modifier.width(Spacing.Md))
+                trailing.invoke(this)
+            }
         }
         if (showDivider) {
             // Inside the gutter padding, so the rule stops where the content does rather than
