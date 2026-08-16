@@ -19,7 +19,6 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
@@ -41,6 +40,9 @@ import com.arcx.core.designsystem.theme.MetaTextStyle
  *
  * Deliberately model-agnostic. The panel takes strings and colours, never a Workflow, so the
  * bubble — which is handed a different list from a different layer — can draw the same card.
+ *
+ * The glass it is drawn on is [ArcxGlassSurface], shared with the runner's answer popup rather
+ * than restated here, so the two cannot disagree about how see-through the user asked for.
  */
 @Composable
 fun WorkflowPanelCard(
@@ -50,7 +52,7 @@ fun WorkflowPanelCard(
     meta: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(
+    ArcxGlassSurface(
         modifier = modifier
             .widthIn(max = PANEL_MAX_WIDTH)
             .fillMaxWidth(),
@@ -58,9 +60,6 @@ fun WorkflowPanelCard(
         // tier was drawn from, and it is the half of it nothing else in the app uses — so left
         // hardcoded it would be one number disagreeing with the file that names it.
         shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shadowElevation = 12.dp,
-        tonalElevation = 3.dp,
     ) {
         Column(Modifier.padding(vertical = 12.dp)) {
             Row(
@@ -79,7 +78,12 @@ fun WorkflowPanelCard(
                     Text(
                         text = meta,
                         style = MetaTextStyle,
-                        color = MaterialTheme.colorScheme.outline,
+                        // `outline` until the surface became translucent, and it cannot survive
+                        // that: measured against a white app behind the panel it falls to 2.4:1,
+                        // and it was only 3.65:1 over the opaque card it was chosen for — under the
+                        // 4.5 floor either way. It stays the quiet half of this row by being small
+                        // and monospace, which is a difference that does not cost contrast.
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

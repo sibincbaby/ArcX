@@ -53,6 +53,7 @@ internal class SettingsRepositoryImpl @Inject constructor(
             prefs[Keys.SIDEBAR_LENGTH_DP] = updated.sidebarLengthDp.coerceLength()
             prefs[Keys.SIDEBAR_WIDTH_DP] = updated.sidebarWidthDp.coerceWidth()
             prefs[Keys.SIDEBAR_OPACITY] = updated.sidebarOpacity.coerceIn(0f, 1f)
+            prefs[Keys.POPUP_TRANSPARENCY] = updated.popupTransparency.coerceTransparency()
             val defaultProvider = updated.defaultProviderId
             if (defaultProvider == null) prefs.remove(Keys.DEFAULT_PROVIDER_ID)
             else prefs[Keys.DEFAULT_PROVIDER_ID] = defaultProvider
@@ -90,8 +91,18 @@ internal class SettingsRepositoryImpl @Inject constructor(
                 ?: defaults.sidebarLengthDp,
             sidebarWidthDp = this[Keys.SIDEBAR_WIDTH_DP]?.coerceWidth() ?: defaults.sidebarWidthDp,
             sidebarOpacity = this[Keys.SIDEBAR_OPACITY]?.coerceIn(0f, 1f) ?: defaults.sidebarOpacity,
+            popupTransparency = this[Keys.POPUP_TRANSPARENCY]?.coerceTransparency()
+                ?: defaults.popupTransparency,
         )
     }
+
+    /**
+     * Clamped on both sides of the store, like the sidebar's numbers above and for a sharper
+     * reason: the cap is a legibility floor, so a restored or hand-edited file must not be able to
+     * hand the panel an alpha its own settings screen refuses to offer.
+     */
+    private fun Float.coerceTransparency(): Float =
+        coerceIn(0f, UserSettings.POPUP_MAX_TRANSPARENCY)
 
     private fun Int.coerceLength(): Int =
         coerceIn(UserSettings.SIDEBAR_MIN_LENGTH_DP, UserSettings.SIDEBAR_MAX_LENGTH_DP)
@@ -115,5 +126,6 @@ internal class SettingsRepositoryImpl @Inject constructor(
         val SIDEBAR_LENGTH_DP = intPreferencesKey("sidebar_length_dp")
         val SIDEBAR_WIDTH_DP = intPreferencesKey("sidebar_width_dp")
         val SIDEBAR_OPACITY = floatPreferencesKey("sidebar_opacity")
+        val POPUP_TRANSPARENCY = floatPreferencesKey("popup_transparency")
     }
 }

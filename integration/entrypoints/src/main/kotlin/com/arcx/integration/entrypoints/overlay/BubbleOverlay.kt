@@ -126,6 +126,7 @@ internal class BubbleOverlay(
      */
     private var themeMode by mutableStateOf(ThemeMode.SYSTEM)
     private var dynamicColor by mutableStateOf(true)
+    private var popupTransparency by mutableStateOf(DEFAULTS.popupTransparency)
 
     /**
      * The user's sidebar geometry; see [updateSidebar].
@@ -188,9 +189,10 @@ internal class BubbleOverlay(
      * happened to be doing, so LIGHT/DARK and the dynamic-colour switch were ignored by the one
      * surface the user sees most often.
      */
-    fun updateTheme(mode: ThemeMode, dynamic: Boolean) {
+    fun updateTheme(mode: ThemeMode, dynamic: Boolean, transparency: Float) {
         themeMode = mode
         dynamicColor = dynamic
+        popupTransparency = transparency
     }
 
     /**
@@ -243,7 +245,11 @@ internal class BubbleOverlay(
                 // The same theme the two Activities use, from a Service context. That is only safe
                 // because ArcXTheme's status-bar SideEffect treats a non-Activity view context as
                 // "no status bar to tint" rather than casting blindly — an overlay window has none.
-                ArcXTheme(themeMode = themeMode, dynamicColor = dynamicColor) {
+                ArcXTheme(
+                    themeMode = themeMode,
+                    dynamicColor = dynamicColor,
+                    popupTransparency = popupTransparency,
+                ) {
                     // One or the other, never both — the strip is not drawn behind the panel.
                     //
                     // Drawing it there is the tempting other half of the idea the panel's

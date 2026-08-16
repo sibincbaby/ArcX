@@ -38,15 +38,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,7 +64,6 @@ import com.arcx.core.designsystem.theme.MetaTextStyle
 import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.model.SidebarSide
 import com.arcx.core.model.UserSettings
-import kotlin.math.round
 import kotlin.math.roundToInt
 
 /**
@@ -282,7 +278,7 @@ internal fun EntryPointsScreen(
                 SectionLabel("Sidebar")
                 SettingsGroup {
                     SidebarSideRow(side = sidebarSide, onSideChange = onSidebarSideChange)
-                    SidebarSlider(
+                    SettingsSlider(
                         title = "Position",
                         value = sidebarVerticalPercent,
                         valueRange = 0f..1f,
@@ -293,7 +289,7 @@ internal fun EntryPointsScreen(
                             "comes back to the same place after you rotate the phone.",
                         onValueChange = onSidebarVerticalPercentChange,
                     )
-                    SidebarSlider(
+                    SettingsSlider(
                         title = "Length",
                         value = sidebarLengthDp.toFloat(),
                         valueRange = UserSettings.SIDEBAR_MIN_LENGTH_DP.toFloat()..
@@ -310,7 +306,7 @@ internal fun EntryPointsScreen(
                             "to tell you where that stretch begins.",
                         onValueChange = { onSidebarLengthChange(it.roundToInt()) },
                     )
-                    SidebarSlider(
+                    SettingsSlider(
                         title = "Thickness",
                         value = sidebarWidthDp.toFloat(),
                         valueRange = UserSettings.SIDEBAR_MIN_WIDTH_DP.toFloat()..
@@ -322,7 +318,7 @@ internal fun EntryPointsScreen(
                             "this says, so the default hairline is far easier to hit than it looks.",
                         onValueChange = { onSidebarWidthChange(it.roundToInt()) },
                     )
-                    SidebarSlider(
+                    SettingsSlider(
                         title = "Opacity",
                         value = sidebarOpacity,
                         valueRange = 0f..1f,
@@ -534,11 +530,6 @@ internal fun EntryPointsScreen(
  */
 private const val SidebarTouchWidthDp = 48
 
-/** Both fractions are stored and shown as whole percent, so that is the step they move in. */
-private const val PercentStep = 0.01f
-
-private fun percentLabel(value: Float): String = "${(value * 100).roundToInt()}%"
-
 private fun dpLabel(value: Float): String = "${value.roundToInt()}dp"
 
 /**
@@ -577,73 +568,6 @@ private fun SidebarSideRow(side: SidebarSide, onSideChange: (SidebarSide) -> Uni
 private fun sideLabel(side: SidebarSide): String = when (side) {
     SidebarSide.LEFT -> "Left"
     SidebarSide.RIGHT -> "Right"
-}
-
-/**
- * One number behind the strip, dragged live.
- *
- * The thumb is driven from local state and the setting is written only when the drag crosses a
- * step the value is actually stored at — a whole dp, a whole percent. Driving the thumb straight
- * from the stored value would put a DataStore write and a Flow round trip inside the gesture,
- * which shows as the thumb trailing the finger; writing every intermediate float would rewrite
- * the preferences file a few hundred times for one drag. Stepping keeps the live redraw and bounds
- * the writes at one per step — 152 for the longest drag on this screen, and 100 for the fractions.
- */
-@Composable
-private fun SidebarSlider(
-    title: String,
-    value: Float,
-    valueRange: ClosedFloatingPointRange<Float>,
-    step: Float,
-    format: (Float) -> String,
-    supporting: String,
-    onValueChange: (Float) -> Unit,
-) {
-    var thumb by remember { mutableFloatStateOf(value) }
-    var written by remember { mutableFloatStateOf(value) }
-    // Re-seed only when the stored value moved without this slider moving it — a reset elsewhere,
-    // or the clamp in SettingsRepositoryImpl refusing what was asked for. Re-seeding on the echo
-    // of this slider's own write would jump the thumb out from under the finger mid-drag.
-    LaunchedEffect(value) {
-        if (value != written) {
-            thumb = value
-            written = value
-        }
-    }
-
-    Column(Modifier.padding(horizontal = Spacing.Lg, vertical = Spacing.Sm)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f),
-            )
-            // The committed value, not the raw thumb: the number and the strip should never
-            // disagree, and the strip only ever sees committed values.
-            Text(
-                text = format(written),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Slider(
-            value = thumb,
-            onValueChange = { raw ->
-                thumb = raw
-                val stepped = (round(raw / step) * step).coerceIn(valueRange)
-                if (stepped != written) {
-                    written = stepped
-                    onValueChange(stepped)
-                }
-            },
-            valueRange = valueRange,
-        )
-        Text(
-            text = supporting,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
 }
 
 /**

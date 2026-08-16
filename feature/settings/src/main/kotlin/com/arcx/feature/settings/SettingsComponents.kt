@@ -19,6 +19,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -26,6 +27,11 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -34,6 +40,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.arcx.core.designsystem.component.ArcxListRowIconSize
 import com.arcx.core.designsystem.theme.Spacing
+import kotlin.math.round
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -181,6 +189,82 @@ internal fun SettingsSwitchRow(
         trailing = { Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled) },
     )
 }
+
+/**
+ * One number behind a live surface, dragged live.
+ *
+ * The thumb is driven from local state and the setting is written only when the drag crosses a
+ * step the value is actually stored at — a whole dp, a whole percent. Driving the thumb straight
+ * from the stored value would put a DataStore write and a Flow round trip inside the gesture,
+ * which shows as the thumb trailing the finger; writing every intermediate float would rewrite
+ * the preferences file a few hundred times for one drag. Stepping keeps the live redraw and bounds
+ * the writes at one per step — 152 for the longest drag in Entry points, and 100 for the fractions.
+ *
+ * Here rather than beside the sidebar sliders it was written for, because Appearance's
+ * transparency slider is the same control with the same two-value dance, and a second copy of this
+ * is a second place for that dance to be got subtly wrong.
+ */
+@Composable
+internal fun SettingsSlider(
+    title: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    step: Float,
+    format: (Float) -> String,
+    supporting: String,
+    onValueChange: (Float) -> Unit,
+) {
+    var thumb by remember { mutableFloatStateOf(value) }
+    var written by remember { mutableFloatStateOf(value) }
+    // Re-seed only when the stored value moved without this slider moving it — a reset elsewhere,
+    // or the clamp in SettingsRepositoryImpl refusing what was asked for. Re-seeding on the echo
+    // of this slider's own write would jump the thumb out from under the finger mid-drag.
+    LaunchedEffect(value) {
+        if (value != written) {
+            thumb = value
+            written = value
+        }
+    }
+
+    Column(Modifier.padding(horizontal = Spacing.Lg, vertical = Spacing.Sm)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+            )
+            // The committed value, not the raw thumb: the number and the surface should never
+            // disagree, and the surface only ever sees committed values.
+            Text(
+                text = format(written),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Slider(
+            value = thumb,
+            onValueChange = { raw ->
+                thumb = raw
+                val stepped = (round(raw / step) * step).coerceIn(valueRange)
+                if (stepped != written) {
+                    written = stepped
+                    onValueChange(stepped)
+                }
+            },
+            valueRange = valueRange,
+        )
+        Text(
+            text = supporting,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Every fraction is stored and shown as whole percent, so that is the step they all move in. */
+internal const val PercentStep = 0.01f
+
+internal fun percentLabel(value: Float): String = "${(value * 100).roundToInt()}%"
 
 /** Quiet explanatory copy; the BYOK story needs saying, not shouting. */
 @Composable

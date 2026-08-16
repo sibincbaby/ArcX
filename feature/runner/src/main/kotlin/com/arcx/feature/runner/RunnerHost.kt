@@ -9,8 +9,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Surface
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,7 +28,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.arcx.core.designsystem.component.ArcxGlassSurface
+import com.arcx.core.designsystem.component.glassSheen
+import com.arcx.core.designsystem.theme.ArcXCorner
 import com.arcx.core.designsystem.theme.PanelScrim
+import com.arcx.core.designsystem.theme.glassColor
 import com.arcx.core.domain.execution.ExecutionState
 import com.arcx.core.model.OutputTarget
 import com.arcx.core.model.WorkflowInput
@@ -197,13 +201,14 @@ fun RunnerHost(
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
             if (workflow == null && compact) {
-                // The compact picker draws its own panel card; wrapping it in the Surface below
+                // The compact picker draws its own panel card; wrapping it in the surface below
                 // would put a card inside a card.
                 content(true)
             } else {
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    tonalElevation = 3.dp,
+                // The same glass as the panel, not a second translucent card of its own — this is
+                // the surface an answer comes back on, and the two are seen one after the other in
+                // a single run.
+                ArcxGlassSurface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp),
@@ -213,12 +218,26 @@ fun RunnerHost(
             }
         }
     } else {
+        // The sheet is the surface most answers arrive on, so it wears the same glass as the panel
+        // and the popup — assembled by hand because ModalBottomSheet draws its own container and
+        // takes no Surface. containerColor and contentColor both have to be given: Material infers
+        // the second from the first, and an exact scheme colour carrying an alpha is no longer a
+        // match, so inferring would fall through to LocalContentColor and put black text on a dark
+        // sheet.
+        //
+        // No rim on this one. Material puts its drag handle in a slot *above* this content lambda,
+        // so a stroke drawn here would cross the sheet under the handle instead of tracing its top
+        // edge, and reaching the real edge means replacing the handle — which is what carries the
+        // sheet's dismiss semantics. A sheet is anchored to the bottom of the screen rather than
+        // floating in the middle of it, so it has less edge to catch the light anyway.
         ModalBottomSheet(
             onDismissRequest = { onClose(RunnerOutcome()) },
             sheetState = sheetState,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            shape = RoundedCornerShape(topStart = ArcXCorner.Panel, topEnd = ArcXCorner.Panel),
+            containerColor = glassColor(MaterialTheme.colorScheme.surfaceContainerLow),
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
-            Column(Modifier.navigationBarsPadding()) { content(false) }
+            Column(Modifier.glassSheen().navigationBarsPadding()) { content(false) }
         }
     }
 }

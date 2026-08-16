@@ -145,12 +145,13 @@ class OverlayService : Service() {
 
         // The bubble is Compose in a window this service owns, so nothing else is in a position to
         // tell it what the user picked in Settings — an overlay has no Activity to inherit a theme
-        // from. Both values travel together because they decide one thing between them.
+        // from. All three values travel together because they decide one thing between them: what
+        // the panel looks like when it opens.
         scope.launch {
             settingsRepository.settings
-                .map { it.theme.toThemeMode() to it.dynamicColor }
+                .map { PanelLook(it.theme.toThemeMode(), it.dynamicColor, it.popupTransparency) }
                 .distinctUntilChanged()
-                .collect { (mode, dynamic) -> bubble.updateTheme(mode, dynamic) }
+                .collect { bubble.updateTheme(it.mode, it.dynamicColor, it.transparency) }
         }
 
         // Which edge the strip is on, where down it, and how big — same reason as the theme above:
@@ -322,6 +323,16 @@ private data class SidebarLook(
     val lengthDp: Int,
     val widthDp: Int,
     val opacity: Float,
+)
+
+/**
+ * The three settings that decide how the *panel* is drawn, grouped for the same reason
+ * [SidebarLook] is: one collector, and one comparison that ignores every unrelated settings edit.
+ */
+private data class PanelLook(
+    val mode: ThemeMode,
+    val dynamicColor: Boolean,
+    val transparency: Float,
 )
 
 /**

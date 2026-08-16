@@ -151,6 +151,7 @@ fun SettingsRoute(
             onBack = { screen = SettingsScreen.ROOT },
             onThemeChange = viewModel::onThemeChange,
             onDynamicColorChange = viewModel::onDynamicColorChange,
+            onPopupTransparencyChange = viewModel::onPopupTransparencyChange,
         )
 
         SettingsScreen.PRIVACY -> PrivacyScreen(

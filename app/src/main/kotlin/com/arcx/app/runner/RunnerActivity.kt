@@ -16,6 +16,7 @@ import com.arcx.core.designsystem.theme.ThemeMode
 import com.arcx.core.domain.repository.SettingsRepository
 import com.arcx.core.model.Attachment
 import com.arcx.core.model.ThemePreference
+import com.arcx.core.model.UserSettings
 import com.arcx.core.model.WorkflowInput
 import com.arcx.feature.runner.RunRequest
 import com.arcx.feature.runner.RunnerHost
@@ -65,6 +66,9 @@ class RunnerActivity : ComponentActivity() {
                     else -> ThemeMode.SYSTEM
                 },
                 dynamicColor = settings?.dynamicColor ?: true,
+                // Every surface this Activity draws is a popup over someone else's app, so this is
+                // the host the setting exists for.
+                popupTransparency = settings?.popupTransparency ?: UserSettings().popupTransparency,
             ) {
                 val resolved = input
                 if (resolved != null) {

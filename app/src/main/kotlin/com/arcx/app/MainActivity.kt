@@ -16,6 +16,7 @@ import com.arcx.app.runner.RunnerActivity
 import com.arcx.core.designsystem.theme.ArcXTheme
 import com.arcx.core.designsystem.theme.ThemeMode
 import com.arcx.core.model.ThemePreference
+import com.arcx.core.model.UserSettings
 import com.arcx.feature.settings.OnboardingRoute
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -35,6 +36,9 @@ class MainActivity : ComponentActivity() {
             ArcXTheme(
                 themeMode = settings?.theme.toThemeMode(),
                 dynamicColor = settings?.dynamicColor ?: true,
+                // Nothing in the app's own screens is glass, but the Appearance screen previews it
+                // and both need the same value to be telling the truth.
+                popupTransparency = settings?.popupTransparency ?: UserSettings().popupTransparency,
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),

@@ -172,6 +172,9 @@ class SettingsViewModel @Inject constructor(
 
     fun onSidebarOpacityChange(opacity: Float) = update { it.copy(sidebarOpacity = opacity) }
 
+    fun onPopupTransparencyChange(transparency: Float) =
+        update { it.copy(popupTransparency = transparency) }
+
     fun overlaySettingsIntent(): Intent = surfaces.overlaySettingsIntent()
 
     fun batteryOptimisationIntent(): Intent = surfaces.batteryOptimisationIntent()

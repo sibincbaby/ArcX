@@ -1,9 +1,12 @@
 package com.arcx.feature.settings
 
 import android.os.Build
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -22,13 +25,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.arcx.core.designsystem.component.ArcxGlassSurface
 import com.arcx.core.designsystem.component.SectionHeader
+import com.arcx.core.designsystem.theme.PanelScrim
+import com.arcx.core.designsystem.theme.Spacing
 import com.arcx.core.model.ScreenshotRetention
 import com.arcx.core.model.ThemePreference
 import com.arcx.core.model.UserSettings
+import kotlin.math.roundToInt
 
 @Composable
 internal fun AppearanceScreen(
@@ -36,6 +46,7 @@ internal fun AppearanceScreen(
     onBack: () -> Unit,
     onThemeChange: (ThemePreference) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
+    onPopupTransparencyChange: (Float) -> Unit,
 ) {
     // Material You only exists from Android 12; offering the toggle below that would be a
     // switch that does nothing.
@@ -78,7 +89,76 @@ internal fun AppearanceScreen(
                     enabled = dynamicColorAvailable,
                 )
             }
+
+            SectionHeader("Popups")
+            SettingsGroup {
+                // Above the slider rather than below it: a thumb is dragged with a finger, and a
+                // finger covers what is under it — which here is the only thing the control does.
+                PopupPreview()
+                SettingsSlider(
+                    title = "Transparency",
+                    value = settings.popupTransparency,
+                    valueRange = 0f..UserSettings.POPUP_MAX_TRANSPARENCY,
+                    step = PercentStep,
+                    format = ::percentLabel,
+                    // The cap is a legibility floor rather than a taste one, and a user who reaches
+                    // it deserves to know why it will not go further. See POPUP_MAX_TRANSPARENCY.
+                    supporting = "How much of the app behind shows through the workflow panel and " +
+                        "the popup an answer comes back in. Stops at " +
+                        "${(UserSettings.POPUP_MAX_TRANSPARENCY * 100).roundToInt()}% because " +
+                        "past that the text stops being readable over a bright app underneath.",
+                    onValueChange = onPopupTransparencyChange,
+                )
+            }
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/**
+ * A pane of the real thing, over a stand-in for someone else's app.
+ *
+ * Worth the twenty lines: every other setting on this screen changes something the user is already
+ * looking at, and this one changes a surface that only ever appears over a *different* app — so
+ * without a preview it is a slider with no visible effect until the next time they use the sidebar.
+ * The backdrop is deliberately busy and bright, because that is the case transparency costs
+ * something in; a preview over a flat colour would flatter the setting at every value.
+ */
+@Composable
+private fun PopupPreview() {
+    Box(
+        modifier = Modifier
+            .padding(horizontal = Spacing.Lg, vertical = Spacing.Sm)
+            .fillMaxWidth()
+            .height(112.dp)
+            .clip(MaterialTheme.shapes.large)
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primary,
+                        MaterialTheme.colorScheme.tertiary,
+                        MaterialTheme.colorScheme.surfaceContainerHighest,
+                    ),
+                ),
+            )
+            // The same dim the real hosts paint behind a popup, so the preview is not flattering
+            // the setting by leaving out the one thing that helps it.
+            .background(PanelScrim),
+        contentAlignment = Alignment.Center,
+    ) {
+        ArcxGlassSurface(
+            modifier = Modifier.padding(horizontal = Spacing.Xl),
+            shape = MaterialTheme.shapes.large,
+            shadowElevation = 6.dp,
+        ) {
+            Column(Modifier.padding(horizontal = Spacing.Lg, vertical = Spacing.Md)) {
+                Text("Rewrite Professionally", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = "Selection → Replace",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

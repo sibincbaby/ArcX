@@ -7,10 +7,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.arcx.core.model.UserSettings
 
 /** Which theme the user picked in Settings. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -19,6 +21,11 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 fun ArcXTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     dynamicColor: Boolean = true,
+    /**
+     * How see-through ArcX's floating popups are; see [LocalPopupTransparency]. Pushed in by the
+     * host like the two above, because the theme has no way to read settings from a Service.
+     */
+    popupTransparency: Float = UserSettings().popupTransparency,
     content: @Composable () -> Unit,
 ) {
     val darkTheme = when (themeMode) {
@@ -52,10 +59,15 @@ fun ArcXTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = ArcXTypography,
-        shapes = ArcXShapes,
-        content = content,
-    )
+    // Clamped here as well as in the repository. This is the last gate before the value becomes an
+    // alpha, and it is the one that also covers a caller passing a literal.
+    val transparency = popupTransparency.coerceIn(0f, UserSettings.POPUP_MAX_TRANSPARENCY)
+    CompositionLocalProvider(LocalPopupTransparency provides transparency) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = ArcXTypography,
+            shapes = ArcXShapes,
+            content = content,
+        )
+    }
 }
