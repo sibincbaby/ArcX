@@ -130,15 +130,18 @@ internal class BubbleOverlay(
     /**
      * The user's sidebar geometry; see [updateSidebar].
      *
-     * The first three are Compose state because they are read while drawing the strip. The last two
-     * only ever reach the window's layout params, which are not Compose's business — making them
-     * state as well would invalidate a composition that cannot see the difference.
+     * Four are Compose state. Three of them are read while drawing the strip, and [verticalPercent]
+     * joined them when the panel started opening out of the strip rather than appearing centred:
+     * the transition needs to know where the strip was, and by then the window is the whole screen
+     * and nothing else on it says. [lengthDp] only ever reaches the window's layout params, which
+     * are not Compose's business — making it state as well would invalidate a composition that
+     * cannot see the difference.
      */
     private var side by mutableStateOf(DEFAULTS.sidebarSide)
     private var stripWidthDp by mutableStateOf(DEFAULTS.sidebarWidthDp)
     private var opacity by mutableStateOf(DEFAULTS.sidebarOpacity)
+    private var verticalPercent by mutableStateOf(DEFAULTS.sidebarVerticalPercent)
     private var lengthDp = DEFAULTS.sidebarLengthDp
-    private var verticalPercent = DEFAULTS.sidebarVerticalPercent
 
     /** True from the tap until the panel actually opens, while a frame grab is in flight. */
     private var expanding = false
@@ -244,6 +247,14 @@ internal class BubbleOverlay(
                     if (expanded) {
                         BubblePanel(
                             workflows = workflows,
+                            // Where the strip is, so the panel can come out of it. Both are read
+                            // during composition, which is why verticalPercent is Compose state.
+                            side = side,
+                            verticalPercent = verticalPercent,
+                            // Collapsed on the spot, not after an exit transition. This is the
+                            // fastest path in the product — the whole reason for tapping the strip
+                            // is what happens next — and the runner is about to cover this window
+                            // anyway, so a retraction here would cost latency to play behind it.
                             onWorkflow = { workflow ->
                                 collapse()
                                 onWorkflow(workflow)
@@ -252,6 +263,8 @@ internal class BubbleOverlay(
                                 collapse()
                                 onMore()
                             },
+                            // Dismissal is the one exit the user actually watches, so this arrives
+                            // only once the card has finished retracting; see [BubblePanel].
                             onDismiss = ::collapse,
                         )
                     } else {

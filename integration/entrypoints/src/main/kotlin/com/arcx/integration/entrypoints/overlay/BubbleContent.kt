@@ -18,12 +18,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.arcx.core.designsystem.component.PanelListMaxHeight
 import com.arcx.core.designsystem.component.WorkflowPanelCard
@@ -33,11 +39,13 @@ import com.arcx.core.designsystem.component.WorkflowPanelRow
 import com.arcx.core.designsystem.component.shortLabel
 import com.arcx.core.designsystem.theme.Motion
 import com.arcx.core.designsystem.theme.PanelScrim
-import com.arcx.core.designsystem.theme.panelEnter
+import com.arcx.core.designsystem.theme.edgePanelEnter
+import com.arcx.core.designsystem.theme.edgePanelExit
 import com.arcx.core.designsystem.theme.tint
 import com.arcx.core.model.SidebarSide
 import com.arcx.core.model.Workflow
 import com.arcx.integration.entrypoints.R
+import kotlin.math.roundToInt
 
 /**
  * How wide the collapsed overlay window is, whatever width the strip is drawn at.
@@ -98,31 +106,70 @@ internal fun SidebarStrip(
  * The expanded panel: the user's pinned and favourite workflows, plus a way through to the full
  * picker. It fills the window, because when expanded the window fills the screen — the empty area
  * is the dismiss target.
+ *
+ * The card grows out of the strip and retracts back into it, which is why this composable needs
+ * [side] and [verticalPercent]: they are the only description of where the strip was, and the
+ * window it is drawn in is the whole screen by the time this runs.
+ *
+ * Animating here rather than inside `WorkflowPanelCard` is deliberate. That card is shared with
+ * the runner's compact picker, which is a dialog in the middle of a screen with no edge to come
+ * out of; a transition inside it would be inherited by a host it makes no sense for.
  */
 @Composable
 internal fun BubblePanel(
     workflows: List<Workflow>,
+    side: SidebarSide,
+    /** Where the strip's centre sits down the edge, 0..1 — see [StripAnchor]. */
+    verticalPercent: Float,
     onWorkflow: (Workflow) -> Unit,
     onMore: () -> Unit,
+    /**
+     * Called once the exit transition has finished, not when the user asked to dismiss. The host
+     * shrinks its window back to the strip in this callback, so calling it on the tap would clip
+     * the retraction at its first frame.
+     */
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Animated on appear only. Collapsing tears the expanded window down in the same frame, so
-    // an exit transition would be cut off half-played — worse than none.
-    val appearing = remember { MutableTransitionState(false) }.apply { targetState = true }
+    val fromStart = side == SidebarSide.LEFT
+
+    // Two pieces of state, not one. [leaving] is the request — a tap outside — and [visible] is
+    // what the transition is actually doing about it. The gap between them is the whole point.
+    var leaving by remember { mutableStateOf(false) }
+    val visible = remember { MutableTransitionState(false) }
+
+    // Driven from an effect rather than set during composition, which is the obvious way to write
+    // it and is wrong here: an effect runs *after* the first composition, so the scrim's
+    // animateFloatAsState below gets to read `false` once and has something to animate from.
+    // Assigned inline it would already be true on the composition that initialises the animation,
+    // and the scrim would snap straight to full black — which is exactly what it used to do.
+    LaunchedEffect(leaving) { visible.targetState = !leaving }
+
+    // The window may not shrink until the card has finished retracting into the strip. Same shape
+    // as RunnerHost, which holds its transparent Activity open until the bottom sheet has hidden,
+    // for the same reason: a surface that goes away with its window blinks out instead of leaving.
+    // Guarded on [leaving] because the opening transition is also "not idle, not current" for its
+    // first frames, and would otherwise close the panel the moment it appeared.
+    LaunchedEffect(leaving, visible.isIdle, visible.currentState) {
+        if (leaving && visible.isIdle && !visible.currentState) onDismiss()
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(PanelScrim.copy(alpha = PanelScrim.alpha * scrimAlpha(appearing)))
+            .background(PanelScrim.copy(alpha = PanelScrim.alpha * scrimAlpha(visible.targetState)))
             .clickable(
                 indication = null,
                 interactionSource = null,
-                onClick = onDismiss,
+                onClick = { leaving = true },
             ),
-        contentAlignment = Alignment.Center,
+        contentAlignment = remember(verticalPercent) { StripAnchor(verticalPercent) },
     ) {
-        AnimatedVisibility(visibleState = appearing, enter = panelEnter()) {
+        AnimatedVisibility(
+            visibleState = visible,
+            enter = edgePanelEnter(fromStart),
+            exit = edgePanelExit(fromStart),
+        ) {
             WorkflowPanelCard(
                 title = stringResource(R.string.arcx_bubble_title),
                 // Says what the panel is about to feed a workflow, because from here the user has
@@ -149,7 +196,10 @@ internal fun BubblePanel(
                                 // The top row is what a tap without aiming will hit, so it is the
                                 // one that shows a play affordance.
                                 highlighted = index == 0,
-                                onClick = { onWorkflow(workflow) },
+                                // AnimatedVisibility keeps its content composed and clickable for
+                                // the length of the exit, so without this a tap that lands on the
+                                // card while it is sliding away would still fire a run.
+                                onClick = { if (!leaving) onWorkflow(workflow) },
                             )
                         }
                     }
@@ -157,19 +207,52 @@ internal fun BubblePanel(
 
                 WorkflowPanelFooter(
                     label = stringResource(R.string.arcx_bubble_more),
-                    onClick = onMore,
+                    onClick = { if (!leaving) onMore() },
                 )
             }
         }
     }
 }
 
-/** The scrim fades with the card rather than snapping to full black behind it. */
+/**
+ * Puts the card's vertical centre on the strip's, so the panel opens out of the part of the edge
+ * the user actually touched.
+ *
+ * The strip is settable anywhere from 0 to 100% down the edge, and a permanently centred card only
+ * lines up with it at 50% — everywhere else the continuity the transition is building is thrown
+ * away by where it lands. The cost is that a strip near either end would hang the card off screen,
+ * so the same clamp `BubbleOverlay.applyCollapsedGeometry` uses on the strip is applied here to the
+ * card: it goes as far towards the strip as it can and no further.
+ *
+ * The percent is of [space], which is the expanded window, while the strip's is of the display —
+ * and those are not the same box. Measured on device: the strip window sat at 533..871 of a 2340px
+ * display while the expanded window's frame was 85..2298, so at 30% the card's centre landed at 749
+ * against the strip's 702. 47px of disagreement, and the strip is 338px tall, so the anchor is
+ * still well inside it. Not worth reaching for insets on a LAYOUT_NO_LIMITS overlay window to fix.
+ */
+private class StripAnchor(private val percent: Float) : Alignment {
+    override fun align(size: IntSize, space: IntSize, layoutDirection: LayoutDirection): IntOffset {
+        val y = (space.height * percent - size.height / 2f).roundToInt()
+            .coerceIn(0, (space.height - size.height).coerceAtLeast(0))
+        return IntOffset((space.width - size.width) / 2, y)
+    }
+}
+
+/**
+ * The scrim comes up and goes down with the card rather than snapping to full black behind it.
+ *
+ * Asymmetric like every other pair in Motion.kt: it arrives on the card's timing and leaves faster,
+ * because the way out is the half the user is waiting on.
+ */
 @Composable
-private fun scrimAlpha(state: MutableTransitionState<Boolean>): Float {
+private fun scrimAlpha(visible: Boolean): Float {
     val alpha by animateFloatAsState(
-        targetValue = if (state.targetState) 1f else 0f,
-        animationSpec = tween(Motion.Emphasis, easing = Motion.Standard),
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = if (visible) {
+            tween(Motion.Emphasis, easing = Motion.Standard)
+        } else {
+            tween(Motion.Medium, easing = Motion.Accelerate)
+        },
         label = "bubble-scrim",
     )
     return alpha

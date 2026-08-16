@@ -9,8 +9,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.ui.graphics.TransformOrigin
 
 /**
  * One motion vocabulary for the whole app.
@@ -122,12 +125,64 @@ fun panelEnter(): EnterTransition =
     fadeIn(tween(Motion.Medium, easing = Motion.Standard)) +
         scaleIn(initialScale = 0.94f, animationSpec = tween(Motion.Emphasis, easing = Motion.Decelerate))
 
-private fun slideInHorizontallyBy(sign: Int) = androidx.compose.animation.slideInHorizontally(
+// ------------------------------------------------------------------ out of a docked edge
+
+/**
+ * A panel that belongs to something welded to a screen edge — today, the sidebar's strip.
+ *
+ * Separate from [panelEnter] because the two say different things. A panel appearing *in place*
+ * has no origin to point at; this one does, and the entire job here is to make the card read as
+ * the strip opening out rather than as an unrelated card materialising over the screen.
+ *
+ * The scale is what carries that, not the slide: pivoting on the docked edge means that edge
+ * barely moves while the rest of the card grows away from it, which is what "opening out" looks
+ * like. The slide is only a nudge — the same sixth [stepEnter] uses — because a longer flight
+ * reads as the card arriving from somewhere off screen, which is the impression being fixed.
+ *
+ * [fromStart] is the docked edge: true when the strip is on the left of the window, false on the
+ * right. A Boolean rather than the model's SidebarSide so this file stays free of the model.
+ */
+fun edgePanelEnter(fromStart: Boolean): EnterTransition =
+    slideInHorizontally(
+        initialOffsetX = { if (fromStart) -it / 6 else it / 6 },
+        animationSpec = tween(Motion.Emphasis, easing = Motion.Decelerate),
+    ) + scaleIn(
+        initialScale = 0.9f,
+        transformOrigin = edgeOrigin(fromStart),
+        animationSpec = tween(Motion.Emphasis, easing = Motion.Decelerate),
+    ) + fadeIn(tween(Motion.Medium, easing = Motion.Standard))
+
+/**
+ * The same move played backwards, so the card retracts into the edge it grew out of.
+ *
+ * One duration for all three parts, unlike every other exit here. A host of this transition has
+ * to wait for the whole thing before it may take the surface away — the sidebar's window shrinks
+ * back to a 48dp strip on the way out — and parts that finished at different times would leave it
+ * waiting on a card that is already invisible.
+ */
+fun edgePanelExit(fromStart: Boolean): ExitTransition =
+    slideOutHorizontally(
+        targetOffsetX = { if (fromStart) -it / 6 else it / 6 },
+        animationSpec = tween(Motion.Medium, easing = Motion.Accelerate),
+    ) + scaleOut(
+        targetScale = 0.9f,
+        transformOrigin = edgeOrigin(fromStart),
+        animationSpec = tween(Motion.Medium, easing = Motion.Accelerate),
+    ) + fadeOut(tween(Motion.Medium, easing = Motion.Accelerate))
+
+/**
+ * Pivot on the docked edge, halfway down the card — which is the strip's own centre wherever the
+ * host has anchored the card to it.
+ */
+private fun edgeOrigin(fromStart: Boolean) =
+    TransformOrigin(pivotFractionX = if (fromStart) 0f else 1f, pivotFractionY = 0.5f)
+
+private fun slideInHorizontallyBy(sign: Int) = slideInHorizontally(
     initialOffsetX = { sign * it / 6 },
     animationSpec = tween(Motion.Emphasis, easing = Motion.Decelerate),
 )
 
-private fun slideOutHorizontallyBy(sign: Int) = androidx.compose.animation.slideOutHorizontally(
+private fun slideOutHorizontallyBy(sign: Int) = slideOutHorizontally(
     targetOffsetX = { sign * it / 6 },
     animationSpec = tween(Motion.Emphasis, easing = Motion.Accelerate),
 )
