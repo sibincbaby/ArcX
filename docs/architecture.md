@@ -51,7 +51,7 @@ thing that may actually need one.
 
 ## 2. What exists now
 
-32 commits. 14 modules, ~149 Kotlin files, 89 unit tests. Verified throughout on a Galaxy S25 Ultra
+42 commits. 14 modules, ~156 Kotlin files, 95 unit tests plus 4 instrumented. Verified throughout on a Galaxy S25 Ultra
 (SM-S938B, Android 16) and earlier on a Xiaomi device running MIUI.
 
 ### Entry points, all landing in one place

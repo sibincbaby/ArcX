@@ -1,6 +1,9 @@
 package com.arcx.feature.settings
 
+import android.Manifest
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,7 +17,9 @@ import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.arcx.core.designsystem.component.LocalSnackbarHostState
+import com.arcx.core.designsystem.component.SectionHeader
 import com.arcx.core.model.ThemePreference
 
 /**
@@ -34,7 +41,15 @@ import com.arcx.core.model.ThemePreference
  * [BackHandler] is the whole router.
  */
 private enum class SettingsScreen {
-    ROOT, PROVIDERS, PROVIDER_EDIT, ENTRY_POINTS, APPEARANCE, PRIVACY, ABOUT
+    ROOT,
+    PROVIDERS,
+    PROVIDER_EDIT,
+    ENTRY_POINTS,
+    PERMISSIONS,
+    SCREEN_READING_DISCLOSURE,
+    APPEARANCE,
+    PRIVACY,
+    ABOUT,
 }
 
 /**
@@ -50,6 +65,7 @@ fun SettingsRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val snackbars = LocalSnackbarHostState.current
 
     // Overlay and accessibility can both be revoked from system Settings while ArcX is away,
     // and the root row summarises them, so the refresh lives at the route rather than inside
@@ -73,11 +89,48 @@ fun SettingsRoute(
         screen = SettingsScreen.PROVIDER_EDIT
     }
 
+    /**
+     * The one and only place in ArcX that starts ACTION_ACCESSIBILITY_SETTINGS.
+     *
+     * There used to be two controls doing it, with the disclosure sitting between them, so the
+     * upper one described itself below the button. Now everything that wants the grant — the
+     * Permissions row, the accept button on the disclosure — comes through here, which is what
+     * makes "the disclosure has been seen" something the code can actually promise.
+     */
+    fun openAccessibilitySettings() {
+        context.startActivity(viewModel.screenReadingSettingsIntent())
+    }
+
+    // Android shows this dialog once and never again. The launcher has to live in a composable,
+    // but the answer goes to the ViewModel, because a `remember` here dies with the screen and
+    // took the difference between "never asked" and "refused" with it.
+    val requestNotifications = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> viewModel.onNotificationPermissionResult(granted) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri -> uri?.let(viewModel::onExportWorkflows) }
+
+    // One collector for everything settings has to *do*: send the user to a grant, or say
+    // something back. Both are one-shot, which is why neither is in the UI state.
+    LaunchedEffect(viewModel) {
+        viewModel.effects.collect { effect ->
+            when (effect) {
+                SettingsEffect.RequestOverlayPermission ->
+                    context.startActivity(viewModel.overlaySettingsIntent())
+                is SettingsEffect.Message -> snackbars.showSnackbar(effect.text)
+            }
+        }
+    }
+
     BackHandler(enabled = screen != SettingsScreen.ROOT) {
-        screen = if (screen == SettingsScreen.PROVIDER_EDIT) {
-            SettingsScreen.PROVIDERS
-        } else {
-            SettingsScreen.ROOT
+        screen = when (screen) {
+            SettingsScreen.PROVIDER_EDIT -> SettingsScreen.PROVIDERS
+            // Backing out of the disclosure is not consent, so it goes back to the screen that
+            // asked and writes nothing — see UserSettings.screenReadingConsented.
+            SettingsScreen.SCREEN_READING_DISCLOSURE -> SettingsScreen.PERMISSIONS
+            else -> SettingsScreen.ROOT
         }
     }
 
@@ -103,55 +156,86 @@ fun SettingsRoute(
         )
 
         SettingsScreen.ENTRY_POINTS -> EntryPointsScreen(
-            bubbleEnabled = state.settings.bubbleEnabled,
+            live = state.liveEntryPoints,
+            bubbleLive = state.bubbleActive,
             overlayGranted = state.permissions.overlayGranted,
             screenReadingEnabled = state.permissions.screenReadingEnabled,
-            screenReadingRunning = state.permissions.screenReadingRunning,
+            screenReadingLive = state.screenReadingLive,
             batteryExempt = state.permissions.batteryExempt,
             hasAutostartScreen = state.permissions.hasAutostartScreen,
             launcherIconEnabled = state.permissions.launcherIconEnabled,
             accessibilityButtonAssigned = state.permissions.accessibilityButtonAssigned,
+            accessibilityButtonOffered = state.settings.accessibilityButtonOffered,
             canAddQuickTile = state.permissions.canAddQuickTile,
-            bubbleOpensFullList = state.settings.bubbleOpensFullList,
-            compactPicker = state.settings.compactPicker,
-            sidebarSide = state.settings.sidebarSide,
-            sidebarVerticalPercent = state.settings.sidebarVerticalPercent,
-            sidebarLengthDp = state.settings.sidebarLengthDp,
-            sidebarWidthDp = state.settings.sidebarWidthDp,
-            sidebarOpacity = state.settings.sidebarOpacity,
             onBack = { screen = SettingsScreen.ROOT },
             onBubbleEnabledChange = viewModel::onBubbleEnabledChange,
             onLauncherIconChange = viewModel::onLauncherIconChange,
-            onAddQuickTile = viewModel::onAddQuickTile,
-            accessibilityButtonOffered = state.settings.accessibilityButtonOffered,
             onAccessibilityButtonOfferedChange = viewModel::onAccessibilityButtonOfferedChange,
-            onBubbleOpensFullListChange = viewModel::onBubbleOpensFullListChange,
-            onCompactPickerChange = viewModel::onCompactPickerChange,
+            onAddQuickTile = viewModel::onAddQuickTile,
+            onOpenOverlaySettings = { context.startActivity(viewModel.overlaySettingsIntent()) },
+            onOpenPermissions = { screen = SettingsScreen.PERMISSIONS },
+            onOpenAppearance = { screen = SettingsScreen.APPEARANCE },
+            onOpenBatterySettings = {
+                context.startActivity(viewModel.batteryOptimisationIntent())
+            },
+            // Vendor screens vanish between OEM versions, so an Intent that resolved when the row
+            // was drawn can still be gone by the time it is tapped. It used to fail into silence,
+            // which is indistinguishable from a dead button; now it says so and names what to look
+            // for, since the setting still exists on the phone under some other name.
+            onOpenAutostart = {
+                val intent = viewModel.autostartIntent()
+                val opened = intent != null &&
+                    runCatching { context.startActivity(intent) }.isSuccess
+                if (!opened) viewModel.onAutostartUnavailable()
+            },
+        )
+
+        SettingsScreen.PERMISSIONS -> PermissionsScreen(
+            state = state,
+            onBack = { screen = SettingsScreen.ROOT },
+            onOpenOverlaySettings = { context.startActivity(viewModel.overlaySettingsIntent()) },
+            onRequestNotifications = {
+                requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            },
+            onOpenNotificationSettings = {
+                context.startActivity(viewModel.notificationSettingsIntent())
+            },
+            // The gate. First time through, the disclosure is put up on its own with an accept
+            // button; afterwards this is a plain trip to the system screen, because re-reading two
+            // thousand words to toggle a permission you already agreed to is not consent, it is an
+            // obstacle. Consent is remembered, the grant is Android's.
+            onEnableScreenReading = {
+                if (state.settings.screenReadingConsented) {
+                    openAccessibilitySettings()
+                } else {
+                    screen = SettingsScreen.SCREEN_READING_DISCLOSURE
+                }
+            },
+        )
+
+        SettingsScreen.SCREEN_READING_DISCLOSURE -> ScreenReadingDisclosureScreen(
+            onAccept = {
+                viewModel.onScreenReadingConsent()
+                screen = SettingsScreen.PERMISSIONS
+                openAccessibilitySettings()
+            },
+            onCancel = { screen = SettingsScreen.PERMISSIONS },
+        )
+
+        SettingsScreen.APPEARANCE -> AppearanceScreen(
+            settings = state.settings,
+            sidebarLive = state.bubbleActive,
+            onBack = { screen = SettingsScreen.ROOT },
+            onThemeChange = viewModel::onThemeChange,
+            onDynamicColorChange = viewModel::onDynamicColorChange,
+            onPopupTransparencyChange = viewModel::onPopupTransparencyChange,
             onSidebarSideChange = viewModel::onSidebarSideChange,
             onSidebarVerticalPercentChange = viewModel::onSidebarVerticalPercentChange,
             onSidebarLengthChange = viewModel::onSidebarLengthChange,
             onSidebarWidthChange = viewModel::onSidebarWidthChange,
             onSidebarOpacityChange = viewModel::onSidebarOpacityChange,
-            onOpenOverlaySettings = { context.startActivity(viewModel.overlaySettingsIntent()) },
-            onOpenScreenReadingSettings = {
-                context.startActivity(viewModel.screenReadingSettingsIntent())
-            },
-            onOpenBatterySettings = {
-                context.startActivity(viewModel.batteryOptimisationIntent())
-            },
-            // Vendor screens vanish between OEM versions, so a resolvable Intent at read time can
-            // still be gone by the tap; failing silently beats crashing on a settings row.
-            onOpenAutostart = {
-                viewModel.autostartIntent()?.let { runCatching { context.startActivity(it) } }
-            },
-        )
-
-        SettingsScreen.APPEARANCE -> AppearanceScreen(
-            settings = state.settings,
-            onBack = { screen = SettingsScreen.ROOT },
-            onThemeChange = viewModel::onThemeChange,
-            onDynamicColorChange = viewModel::onDynamicColorChange,
-            onPopupTransparencyChange = viewModel::onPopupTransparencyChange,
+            onBubbleOpensFullListChange = viewModel::onBubbleOpensFullListChange,
+            onCompactPickerChange = viewModel::onCompactPickerChange,
         )
 
         SettingsScreen.PRIVACY -> PrivacyScreen(
@@ -162,6 +246,7 @@ fun SettingsRoute(
             onScreenshotRetentionChange = viewModel::onScreenshotRetentionChange,
             onDeleteScreenshots = viewModel::onDeleteScreenshots,
             onClearHistory = viewModel::onClearHistory,
+            onExportWorkflows = { exportLauncher.launch(EXPORT_FILE_NAME) },
             onDeleteAllLocalData = viewModel::onDeleteAllLocalData,
         )
 
@@ -169,6 +254,21 @@ fun SettingsRoute(
     }
 }
 
+/** The same name Discover writes, so a second export overwrites rather than accumulates. */
+private const val EXPORT_FILE_NAME = "arcx-workflows.json"
+
+/**
+ * Six rows under three headings, grouped by the question the user arrived with: where does ArcX
+ * appear, what is ArcX allowed to do, what does it look like, what does it keep.
+ *
+ * There was no organising principle before this, and it showed — five rows, four different
+ * taxonomies, and no headings at all, so a new control landed on whichever screen the feature that
+ * introduced it happened to be built on. That is how Entry points ended up holding the accessibility
+ * disclosure, the notification permission, five appearance sliders and forty-five per cent of every
+ * control in Settings. The principle is not "one screen per subsystem"; it is one screen per
+ * question, which is why Permissions is now its own row and why the sidebar's looks live with the
+ * theme rather than with the switch that turns the sidebar on.
+ */
 @Composable
 private fun SettingsRootScreen(
     state: SettingsUiState,
@@ -184,6 +284,7 @@ private fun SettingsRootScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
+            SectionHeader("What runs your workflows")
             SettingsGroup {
                 SettingsRow(
                     title = "Providers",
@@ -191,12 +292,26 @@ private fun SettingsRootScreen(
                     icon = Icons.Outlined.Cloud,
                     onClick = { onOpen(SettingsScreen.PROVIDERS) },
                 )
+            }
+
+            SectionHeader("Where ArcX appears, and what it may do")
+            SettingsGroup {
                 SettingsRow(
                     title = "Entry points",
-                    subtitle = entryPointsSubtitle(state),
+                    subtitle = "${state.liveEntryPoints} of 6 live",
                     icon = Icons.Outlined.Bolt,
                     onClick = { onOpen(SettingsScreen.ENTRY_POINTS) },
                 )
+                SettingsRow(
+                    title = "Permissions",
+                    subtitle = "${state.permissionsGranted} of 3 granted",
+                    icon = Icons.Outlined.VerifiedUser,
+                    onClick = { onOpen(SettingsScreen.PERMISSIONS) },
+                )
+            }
+
+            SectionHeader("The app itself")
+            SettingsGroup {
                 SettingsRow(
                     title = "Appearance",
                     subtitle = themeLabel(state.settings.theme),
@@ -204,7 +319,7 @@ private fun SettingsRootScreen(
                     onClick = { onOpen(SettingsScreen.APPEARANCE) },
                 )
                 SettingsRow(
-                    title = "Privacy",
+                    title = "Privacy & data",
                     subtitle = if (state.settings.historyEnabled) "History on" else "History off",
                     icon = Icons.Outlined.Shield,
                     onClick = { onOpen(SettingsScreen.PRIVACY) },
@@ -223,16 +338,6 @@ private fun SettingsRootScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
-}
-
-private fun entryPointsSubtitle(state: SettingsUiState): String {
-    val bubble = if (state.bubbleActive) "Sidebar on" else "Sidebar off"
-    val screen = if (state.permissions.screenReadingEnabled) {
-        "Screen reading on"
-    } else {
-        "Screen reading off"
-    }
-    return "$bubble · $screen"
 }
 
 private fun providersSubtitle(state: SettingsUiState): String = when {

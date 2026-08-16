@@ -45,6 +45,8 @@ internal class SettingsRepositoryImpl @Inject constructor(
             prefs[Keys.COMPACT_PICKER] = updated.compactPicker
             prefs[Keys.SCREENSHOT_RETENTION] = updated.screenshotRetention.name
             prefs[Keys.ACCESSIBILITY_BUTTON_OFFERED] = updated.accessibilityButtonOffered
+            prefs[Keys.SCREEN_READING_CONSENTED] = updated.screenReadingConsented
+            prefs[Keys.NOTIFICATION_PERMISSION_ASKED] = updated.notificationPermissionAsked
             // The sidebar's four numbers are clamped on the way in as well as on the way out.
             // Clamping only on read would let a slider store 400dp and read back 200, so the next
             // thing to write the settings would round-trip a value the user never sees.
@@ -80,6 +82,13 @@ internal class SettingsRepositoryImpl @Inject constructor(
                 ?: defaults.screenshotRetention,
             accessibilityButtonOffered = this[Keys.ACCESSIBILITY_BUTTON_OFFERED]
                 ?: defaults.accessibilityButtonOffered,
+            // A missing value means "not yet", for both of these, which is the safe reading: the
+            // disclosure is shown again rather than skipped, and the notification dialog is offered
+            // again rather than declared refused.
+            screenReadingConsented = this[Keys.SCREEN_READING_CONSENTED]
+                ?: defaults.screenReadingConsented,
+            notificationPermissionAsked = this[Keys.NOTIFICATION_PERMISSION_ASKED]
+                ?: defaults.notificationPermissionAsked,
             sidebarSide = this[Keys.SIDEBAR_SIDE]
                 ?.let { runCatching { enumValueOf<SidebarSide>(it) }.getOrNull() }
                 ?: defaults.sidebarSide,
@@ -121,6 +130,8 @@ internal class SettingsRepositoryImpl @Inject constructor(
         val COMPACT_PICKER = booleanPreferencesKey("compact_picker")
         val SCREENSHOT_RETENTION = stringPreferencesKey("screenshot_retention")
         val ACCESSIBILITY_BUTTON_OFFERED = booleanPreferencesKey("accessibility_button_offered")
+        val SCREEN_READING_CONSENTED = booleanPreferencesKey("screen_reading_consented")
+        val NOTIFICATION_PERMISSION_ASKED = booleanPreferencesKey("notification_permission_asked")
         val SIDEBAR_SIDE = stringPreferencesKey("sidebar_side")
         val SIDEBAR_VERTICAL_PERCENT = floatPreferencesKey("sidebar_vertical_percent")
         val SIDEBAR_LENGTH_DP = intPreferencesKey("sidebar_length_dp")

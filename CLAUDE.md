@@ -24,13 +24,17 @@ its evidence — is in `docs/architecture.md`. Read it before any structural cha
 ## Commands
 
 ```bash
-./gradlew testDebugUnitTest          # 89 unit tests, all modules
+./gradlew testDebugUnitTest          # 95 unit tests, all modules
 ./gradlew installDebug               # build + install on the attached device
 ./gradlew :core:domain:testDebugUnitTest
 adb logcat -d | grep -E "arcx|AndroidRuntime"
 ```
 
 There is **no lint or ktlint task wired up**. Do not claim one was run.
+
+`KeystoreVault` **is** tested — four cases in `core/data/src/androidTest`. They are instrumented,
+because the vault needs a real AndroidKeystore, so `testDebugUnitTest` does not run them and a
+count of that task will always look as though the vault is untested. It is not.
 
 ```bash
 ./gradlew :benchmark:connectedBenchmarkAndroidTest   # startup + frame timing, on device
@@ -101,7 +105,7 @@ Traps that have already cost time:
 
 ## Modules
 
-14 modules, ~149 Kotlin files. Dependencies point inward; nothing in `core/` knows about `feature/`.
+14 modules, ~156 Kotlin files. Dependencies point inward; nothing in `core/` knows about `feature/`.
 
 ```
 :app                     Application, MainActivity, RunnerActivity, the merged manifest
@@ -126,6 +130,15 @@ adding a module dependency. Both re-read it on resume — none of it emits on ch
 The bottom bar is **four tabs**: Home · Library · Discover · Activity. Settings is a full-screen
 push off the Home header, not a tab; `arcx://` deep links go to `RunnerActivity`, never to a tab,
 so tab routes are free to be renamed.
+
+**Settings is six rows grouped by the question the user arrived with** — Providers · Entry points ·
+Permissions · Appearance · Privacy & data · About — where does ArcX appear, what is ArcX allowed to
+do, what does it look like, what does it keep. Put a new control on the screen that answers its
+question, not on the screen belonging to the feature that introduced it: that is how Entry points
+came to hold the accessibility disclosure, the notification grant, five appearance sliders and 45%
+of every control in Settings. **Exactly one control in the app opens
+`ACTION_ACCESSIBILITY_SETTINGS`** — Permissions → Screen reading, gated by the disclosure screen.
+See `docs/play-store-readiness.md` §1 before adding a second.
 
 **Motion lives in `Motion.kt`** (`:core:designsystem`), and `ArcxNavHost` picks between its two
 kinds by asking whether both ends of the move are tabs. Do not fall back to navigation-compose's

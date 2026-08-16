@@ -1,13 +1,5 @@
 package com.arcx.feature.settings
 
-import android.Manifest
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
-import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,136 +9,85 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ViewSidebar
-import androidx.compose.material.icons.outlined.Accessibility
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.BatteryAlert
 import androidx.compose.material.icons.outlined.BatteryStd
-import androidx.compose.material.icons.outlined.CloseFullscreen
 import androidx.compose.material.icons.outlined.Dashboard
-import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.TouchApp
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.Widgets
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LifecycleResumeEffect
-import com.arcx.core.designsystem.R as DesignSystemR
 import com.arcx.core.designsystem.component.NoticeCard
 import com.arcx.core.designsystem.component.NoticeSeverity
-import com.arcx.core.designsystem.component.SectionLabel
+import com.arcx.core.designsystem.component.SectionHeader
 import com.arcx.core.designsystem.component.TintedIcon
 import com.arcx.core.designsystem.theme.MetaTextStyle
 import com.arcx.core.designsystem.theme.Spacing
-import com.arcx.core.model.SidebarSide
-import com.arcx.core.model.UserSettings
-import kotlin.math.roundToInt
 
 /**
- * Everything that lets ArcX be used from outside its own window, led by how many of them are
- * actually working right now.
+ * Where ArcX appears, and nothing else.
  *
- * The count at the top is the point of the screen. Three of these can be revoked in system
- * Settings while ArcX is backgrounded and two more are switches the user forgot they never
- * turned on, so the honest answer to "why did nothing happen when I selected that text" is
- * usually visible here and nowhere else. Every permission is read fresh on resume rather than
- * remembered from when the screen was built.
+ * The count at the top is the point of the screen. Three of these can be revoked in system Settings
+ * while ArcX is backgrounded and two more are switches the user forgot they never turned on, so the
+ * honest answer to "why did nothing happen when I selected that text" is usually visible here and
+ * nowhere else. Every permission behind it is read fresh on resume rather than remembered from when
+ * the screen was built.
+ *
+ * This screen used to be the whole of Settings by weight — eighteen controls, no headings, and four
+ * separate subjects. What left: the accessibility grant and its disclosure went to Permissions,
+ * the notification grant with them, and the five sidebar sliders and the two picker switches went
+ * to Appearance, which is where a user goes to ask what something looks like. What stayed is the
+ * one question this screen's title asks. What arrived is the widget, a shipped entry point this
+ * screen had never listed.
  */
 @Composable
 internal fun EntryPointsScreen(
-    bubbleEnabled: Boolean,
+    live: Int,
+    bubbleLive: Boolean,
     overlayGranted: Boolean,
     batteryExempt: Boolean,
     hasAutostartScreen: Boolean,
-    onOpenBatterySettings: () -> Unit,
-    onOpenAutostart: () -> Unit,
     screenReadingEnabled: Boolean,
-    screenReadingRunning: Boolean,
+    screenReadingLive: Boolean,
     launcherIconEnabled: Boolean,
     accessibilityButtonAssigned: Boolean,
     accessibilityButtonOffered: Boolean,
-    onAccessibilityButtonOfferedChange: (Boolean) -> Unit,
     canAddQuickTile: Boolean,
-    bubbleOpensFullList: Boolean,
-    compactPicker: Boolean,
-    sidebarSide: SidebarSide,
-    sidebarVerticalPercent: Float,
-    sidebarLengthDp: Int,
-    sidebarWidthDp: Int,
-    sidebarOpacity: Float,
     onBack: () -> Unit,
     onBubbleEnabledChange: (Boolean) -> Unit,
     onLauncherIconChange: (Boolean) -> Unit,
+    onAccessibilityButtonOfferedChange: (Boolean) -> Unit,
     onAddQuickTile: () -> Unit,
-    onBubbleOpensFullListChange: (Boolean) -> Unit,
-    onCompactPickerChange: (Boolean) -> Unit,
-    onSidebarSideChange: (SidebarSide) -> Unit,
-    onSidebarVerticalPercentChange: (Float) -> Unit,
-    onSidebarLengthChange: (Int) -> Unit,
-    onSidebarWidthChange: (Int) -> Unit,
-    onSidebarOpacityChange: (Float) -> Unit,
     onOpenOverlaySettings: () -> Unit,
-    onOpenScreenReadingSettings: () -> Unit,
+    onOpenPermissions: () -> Unit,
+    onOpenAppearance: () -> Unit,
+    onOpenBatterySettings: () -> Unit,
+    onOpenAutostart: () -> Unit,
 ) {
-    val context = LocalContext.current
-    var notificationsGranted by remember { mutableStateOf(context.hasNotificationPermission()) }
-    // Only meaningful after a refusal: Android stops showing the dialog, so the honest next
-    // step becomes the app's own notification settings.
-    var notificationsBlocked by remember { mutableStateOf(false) }
-
-    val requestNotifications = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        notificationsGranted = granted
-        notificationsBlocked = !granted
-    }
-
-    LifecycleResumeEffect(Unit) {
-        notificationsGranted = context.hasNotificationPermission()
-        if (notificationsGranted) notificationsBlocked = false
-        onPauseOrDispose { }
-    }
-
-    val bubbleLive = bubbleEnabled && overlayGranted
-    // The six ArcX can actually answer for. The Quick Settings tile is deliberately not among
-    // them: Android exposes no way to ask whether a tile has been added to the shade, and a
-    // guess in this count would make the whole number worthless.
-    // Counts running, not merely switched on: a service Android lists but is not hosting is not
-    // a way in, however the setting reads.
-    val screenReadingLive = screenReadingEnabled && screenReadingRunning
-    val live = listOf(
-        bubbleLive,
-        true, // text selection menu — a manifest activity, always present
-        true, // share sheet — likewise
-        launcherIconEnabled,
-        accessibilityButtonAssigned && accessibilityButtonOffered,
-        screenReadingLive,
-    ).count { it }
-
     SettingsScaffold(title = "Entry points", onBack = onBack) { padding ->
         Column(
             Modifier
@@ -157,11 +98,21 @@ internal fun EntryPointsScreen(
             Text(
                 text = "$live of 6 are live",
                 style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(
-                    start = Spacing.Gutter,
-                    end = Spacing.Gutter,
-                    top = Spacing.Sm,
-                ),
+                modifier = Modifier
+                    .padding(
+                        start = Spacing.Gutter,
+                        end = Spacing.Gutter,
+                        top = Spacing.Sm,
+                    )
+                    // A heading because it is the one, and polite because it is the sentence that
+                    // changes when the user comes back from system Settings having granted
+                    // something. Every permission on this screen is re-read on resume, so the
+                    // number moves while nothing has been touched here — announcing it is the only
+                    // way that reaches someone who cannot see it move.
+                    .semantics {
+                        heading()
+                        liveRegion = LiveRegionMode.Polite
+                    },
             )
             Text(
                 text = "Each one funnels into the same runner, so a workflow behaves identically " +
@@ -175,18 +126,34 @@ internal fun EntryPointsScreen(
                 ),
             )
 
-            Spacer(Modifier.height(18.dp))
+            // Above the list rather than under the sidebar row: it is the one thing on this screen
+            // that stops a surface working outright, and the switch above it will not stay on
+            // until it is dealt with.
+            if (!overlayGranted) {
+                Spacer(Modifier.height(Spacing.Md))
+                PermissionPrompt(
+                    body = "Drawing over other apps is off, so the sidebar has nowhere to " +
+                        "appear. Grant it and the sidebar switches on by itself.",
+                    actionLabel = "Grant permission",
+                    onAction = onOpenOverlaySettings,
+                )
+            }
+
+            SectionHeader("Ways in")
             SettingsGroup {
                 SurfaceRow(
                     icon = Icons.AutoMirrored.Outlined.ViewSidebar,
                     title = "Edge sidebar",
                     subtitle = "A thin strip down one edge — tap or swipe it from inside any app",
                     live = bubbleLive,
+                    modifier = Modifier.toggleable(
+                        value = bubbleLive,
+                        role = Role.Switch,
+                        onValueChange = onBubbleEnabledChange,
+                    ),
                 ) {
-                    Switch(
-                        checked = bubbleLive,
-                        onCheckedChange = onBubbleEnabledChange,
-                    )
+                    // null, not a second handler: the row is the control. See SettingsSwitchRow.
+                    Switch(checked = bubbleLive, onCheckedChange = null)
                 }
                 SurfaceRow(
                     icon = Icons.Outlined.TextFields,
@@ -205,18 +172,20 @@ internal fun EntryPointsScreen(
                     title = "App drawer icon",
                     subtitle = "\"ArcX Actions\" — drop it on a home screen or an Edge panel",
                     live = launcherIconEnabled,
+                    modifier = Modifier.toggleable(
+                        value = launcherIconEnabled,
+                        role = Role.Switch,
+                        onValueChange = onLauncherIconChange,
+                    ),
                 ) {
-                    Switch(
-                        checked = launcherIconEnabled,
-                        onCheckedChange = onLauncherIconChange,
-                    )
+                    Switch(checked = launcherIconEnabled, onCheckedChange = null)
                 }
                 SurfaceRow(
                     icon = Icons.Outlined.TouchApp,
                     title = "Accessibility button",
                     subtitle = when {
                         !screenReadingEnabled ->
-                            "Needs the accessibility permission first"
+                            "Needs the accessibility permission first — see Permissions"
                         !accessibilityButtonOffered ->
                             "Off. Turn this on to let ArcX be one of the things the " +
                                 "accessibility button and the volume-key shortcut can open."
@@ -228,19 +197,27 @@ internal fun EntryPointsScreen(
                                 "to finish."
                     },
                     live = accessibilityButtonAssigned && accessibilityButtonOffered,
+                    // Only a control while there is a switch drawn in it. Without the permission
+                    // this row is a sentence explaining what is missing, and a row that announces
+                    // itself as a switch with nothing to flip is worse than one that does not.
+                    modifier = if (screenReadingEnabled) {
+                        Modifier.toggleable(
+                            value = accessibilityButtonOffered,
+                            role = Role.Switch,
+                            onValueChange = onAccessibilityButtonOfferedChange,
+                        )
+                    } else {
+                        Modifier
+                    },
                 ) {
                     if (screenReadingEnabled) {
-                        Switch(
-                            checked = accessibilityButtonOffered,
-                            onCheckedChange = onAccessibilityButtonOfferedChange,
-                        )
+                        Switch(checked = accessibilityButtonOffered, onCheckedChange = null)
                     }
                 }
-                // Screen reading appears twice on this screen and both are wanted. This one is the
-                // capability, listed with the other ways in and counted in the number at the top,
-                // so it answers "is it working". The row further down, under the disclosure, is
-                // the grant behind it and answers "have I given it". Deleting either leaves a
-                // question the other cannot answer — the titles carry the difference instead.
+                // The capability, not the grant. It stays in this list and in the count because it
+                // is the answer to "why did nothing happen when I selected that text" — the grant
+                // itself now lives on Permissions, behind the disclosure, and this row's button
+                // goes there rather than opening the system Accessibility screen a second way.
                 SurfaceRow(
                     icon = Icons.Outlined.Visibility,
                     title = "Screen reading",
@@ -255,115 +232,28 @@ internal fun EntryPointsScreen(
                     },
                     live = screenReadingLive,
                 ) {
-                    TextButton(onClick = onOpenScreenReadingSettings) {
-                        Text(if (screenReadingEnabled) "Manage" else "Enable")
-                    }
+                    TextButton(onClick = onOpenPermissions) { Text("Permissions") }
                 }
             }
 
-            if (!overlayGranted) {
-                PermissionPrompt(
-                    body = "Drawing over other apps is off, so the sidebar has nowhere to " +
-                        "appear. Grant it and the sidebar switches on by itself.",
-                    actionLabel = "Grant permission",
-                    onAction = onOpenOverlaySettings,
-                )
-            }
-
-            // Only while there is a strip on screen to change. Five sliders under a switch that is
-            // off would be five controls with nothing at the other end of them — and the reason
-            // they are worth having here at all is that the overlay is a separate window that
-            // floats above this one, so a drag redraws the real strip rather than a preview of it.
-            if (bubbleLive) {
-                SectionLabel("Sidebar")
-                SettingsGroup {
-                    SidebarSideRow(side = sidebarSide, onSideChange = onSidebarSideChange)
-                    SettingsSlider(
-                        title = "Position",
-                        value = sidebarVerticalPercent,
-                        valueRange = 0f..1f,
-                        step = PercentStep,
-                        format = ::percentLabel,
-                        supporting = "Where the middle of the strip sits, from the top of the " +
-                            "screen down. Kept as a proportion rather than a distance, so it " +
-                            "comes back to the same place after you rotate the phone.",
-                        onValueChange = onSidebarVerticalPercentChange,
-                    )
-                    SettingsSlider(
-                        title = "Length",
-                        value = sidebarLengthDp.toFloat(),
-                        valueRange = UserSettings.SIDEBAR_MIN_LENGTH_DP.toFloat()..
-                            UserSettings.SIDEBAR_MAX_LENGTH_DP.toFloat(),
-                        step = 1f,
-                        format = ::dpLabel,
-                        // The cap is Android's, not a house style, and a user who hits it deserves
-                        // to know it will not move. See UserSettings.SIDEBAR_MAX_LENGTH_DP.
-                        supporting = "Stops at ${UserSettings.SIDEBAR_MAX_LENGTH_DP}dp because " +
-                            "Android stops there: it keeps the back gesture off this strip, and " +
-                            "it will only do that for ${UserSettings.SIDEBAR_MAX_LENGTH_DP}dp of " +
-                            "a screen edge. A longer strip would have a stretch at the end where " +
-                            "your swipe goes back instead of opening ArcX, with nothing on screen " +
-                            "to tell you where that stretch begins.",
-                        onValueChange = { onSidebarLengthChange(it.roundToInt()) },
-                    )
-                    SettingsSlider(
-                        title = "Thickness",
-                        value = sidebarWidthDp.toFloat(),
-                        valueRange = UserSettings.SIDEBAR_MIN_WIDTH_DP.toFloat()..
-                            UserSettings.SIDEBAR_MAX_WIDTH_DP.toFloat(),
-                        step = 1f,
-                        format = ::dpLabel,
-                        supporting = "How wide the strip is drawn — not how big a target it is. " +
-                            "It takes touches across a full ${SidebarTouchWidthDp}dp whatever " +
-                            "this says, so the default hairline is far easier to hit than it looks.",
-                        onValueChange = { onSidebarWidthChange(it.roundToInt()) },
-                    )
-                    SettingsSlider(
-                        title = "Opacity",
-                        value = sidebarOpacity,
-                        valueRange = 0f..1f,
-                        step = PercentStep,
-                        format = ::percentLabel,
-                        supporting = "Fades the strip you can see. The band it takes touches in " +
-                            "never fades with it, so even at nothing it still opens.",
-                        onValueChange = onSidebarOpacityChange,
-                    )
-                }
-                SettingsNote(
-                    "Each of these applies as you drag it. The strip is its own window sitting " +
-                        "above this screen, so what moves is the real thing.",
-                )
-            }
-
+            // Everything else about the sidebar, directly under the switch that turns it on rather
+            // than at the bottom of the screen where it used to be — a user who has just found out
+            // their sidebar stopped overnight should not have to scroll past the share sheet to
+            // find out why.
+            SectionHeader("The sidebar")
             SettingsGroup {
-                SurfaceRow(
-                    icon = Icons.Outlined.Dashboard,
-                    title = "Quick Settings tile",
-                    subtitle = if (canAddQuickTile) {
-                        "Sits with Wi-Fi and Bluetooth, so you can open your workflows from any " +
-                            "screen — even the lock screen. Android will not tell us whether you " +
-                            "have added it, so it is not in the count above."
-                    } else {
-                        "Swipe down twice, tap Edit, and drag the ArcX tile in. It then works " +
-                            "from any screen, even the lock screen."
-                    },
-                    live = null,
-                ) {
-                    if (canAddQuickTile) {
-                        TextButton(onClick = onAddQuickTile) { Text("Add") }
-                    }
-                }
+                SettingsRow(
+                    title = "Sidebar appearance",
+                    subtitle = "Which edge, how far down, how long, how thick, how faint",
+                    icon = Icons.Outlined.Tune,
+                    onClick = onOpenAppearance,
+                )
             }
-            SettingsNote(
-                "One more way in needs no setup at all: hold down the ArcX icon and pick " +
-                    "\"Actions\".",
-            )
-
             // Clearing ArcX from Recents kills its process, and Android does not restart the
             // service afterwards on the OEMs that police background starts — the sidebar is simply
             // gone until the app is opened again. These two settings are the only levers a user
             // has, so say what they are for rather than listing permissions.
-            Spacer(Modifier.height(Spacing.Sm))
+            //
             // Amber, not red: none of this is broken, it is the platform behaving as designed.
             NoticeCard(
                 severity = NoticeSeverity.Warning,
@@ -397,6 +287,10 @@ internal fun EntryPointsScreen(
                         }
                     },
                 )
+                // The one control on this screen that is hidden rather than disabled when it cannot
+                // be used, and the exception is deliberate: every other dependency here is
+                // something the user can go and satisfy, while a phone with no vendor autostart
+                // screen will never have one. A greyed-out row would be a permanent dead end.
                 if (hasAutostartScreen) {
                     SettingsRow(
                         title = "Autostart",
@@ -409,170 +303,52 @@ internal fun EntryPointsScreen(
                 }
             }
 
-            SectionLabel("Screen reading")
-            // The disclosure sits above the control on purpose: Play's accessibility policy
-            // wants it in front of the user before they act, not tucked under the switch.
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Spacing.Gutter, vertical = 6.dp),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-            ) {
-                Column(Modifier.padding(Spacing.Lg)) {
-                    Text(
-                        "What this permission does",
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Spacer(Modifier.height(Spacing.Sm))
-                    // Same string the system Accessibility screen shows, so the two can never
-                    // describe the permission differently.
-                    Text(
-                        stringResource(DesignSystemR.string.arcx_accessibility_description),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
+            // Neither of these is in the count above, for the same reason: they are placed by the
+            // shade and by the launcher, and Android will not say whether the user has done it.
+            // A guess here would make the number at the top worthless.
+            SectionHeader("Put ArcX somewhere yourself")
             SettingsGroup {
-                // "permission", because the row in the entry-point list above is already called
-                // Screen reading and the same words twice left the user guessing which one
-                // mattered. This is the grant itself: it reports whether it has been given, not
-                // whether the service is currently running — that is the other row's job, and it
-                // is why the two can honestly disagree when Android stops a granted service.
-                //
-                // The subtitle names Accessibility because that is where Android keeps this and
-                // ArcX's own name for it appears nowhere in system Settings. The quoted entry is
-                // arcx_accessibility_label in :integration:entrypoints; keep the two in step.
-                SettingsRow(
-                    title = "Screen reading permission",
-                    subtitle = if (screenReadingEnabled) {
-                        "Granted — Android lists it under Accessibility as \"ArcX screen reading\""
+                SurfaceRow(
+                    icon = Icons.Outlined.Dashboard,
+                    title = "Quick Settings tile",
+                    subtitle = if (canAddQuickTile) {
+                        "Sits with Wi-Fi and Bluetooth, so you can open your workflows from any " +
+                            "screen — even the lock screen."
                     } else {
-                        "Not granted — turn on \"ArcX screen reading\" under Accessibility to let " +
-                            "workflows use what is on screen"
+                        "Swipe down twice, tap Edit, and drag the ArcX tile in. It then works " +
+                            "from any screen, even the lock screen."
                     },
-                    icon = Icons.Outlined.Accessibility,
-                    trailing = {
-                        TextButton(onClick = onOpenScreenReadingSettings) {
-                            Text(if (screenReadingEnabled) "Manage" else "Enable")
-                        }
-                    },
-                )
-            }
-
-            SectionLabel("Notifications")
-            SettingsGroup {
-                SettingsRow(
-                    title = "Notifications",
-                    subtitle = when {
-                        notificationsGranted -> "Allowed"
-                        notificationsBlocked -> "Blocked in system settings"
-                        else -> "Not allowed yet"
-                    },
-                    icon = Icons.Outlined.Notifications,
-                    trailing = {
-                        if (!notificationsGranted) {
-                            TextButton(
-                                onClick = {
-                                    if (notificationsBlocked) {
-                                        context.startActivity(context.appNotificationSettings())
-                                    } else {
-                                        requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    }
-                                },
-                            ) { Text(if (notificationsBlocked) "Open settings" else "Allow") }
-                        }
-                    },
-                )
+                    live = null,
+                ) {
+                    if (canAddQuickTile) {
+                        TextButton(onClick = onAddQuickTile) { Text("Add") }
+                    }
+                }
+                SurfaceRow(
+                    icon = Icons.Outlined.Widgets,
+                    title = "Home-screen widget",
+                    subtitle = "\"ArcX favorites\" — long-press your home screen, pick Widgets, " +
+                        "and drag it in. It runs your starred workflows in one tap.",
+                    live = null,
+                ) {}
             }
             SettingsNote(
-                "Workflows that deliver their answer as a notification need this, and so does " +
-                    "the edge sidebar, which Android requires to run behind an ongoing " +
-                    "notification.",
+                "One more way in needs no setup at all: hold down the ArcX icon and pick " +
+                    "\"Actions\".",
             )
-
-            // The two lists differ because the sidebar's window may never take focus — without
-            // that, the app underneath stops being readable, which is the whole point of the
-            // sidebar. A non-focusable window cannot host a text field, so its panel has no
-            // search. Everything else opens a normal Activity and has no such limit. Both of
-            // those are defaults, not rules, so both are switchable here.
-            SectionLabel("Workflow list")
-            SettingsGroup {
-                SettingsSwitchRow(
-                    title = "Sidebar opens the full list",
-                    subtitle = "Search included, like every other entry point. The screen is " +
-                        "still read before the list appears, so workflows that use it keep " +
-                        "working — but the list covers the app instead of floating over it.",
-                    icon = Icons.Outlined.OpenInFull,
-                    checked = bubbleOpensFullList,
-                    onCheckedChange = onBubbleOpensFullListChange,
-                )
-                SettingsSwitchRow(
-                    title = "Compact list everywhere else",
-                    subtitle = "Drops the search box from the tile, share sheet, shortcuts and " +
-                        "the drawer icon, so they match the sidebar's panel.",
-                    icon = Icons.Outlined.CloseFullscreen,
-                    checked = compactPicker,
-                    onCheckedChange = onCompactPickerChange,
-                )
-            }
             Spacer(Modifier.height(Spacing.Xxl))
         }
     }
 }
 
 /**
- * The width the sidebar's window takes touches across, restated here for one sentence of copy.
- *
- * The real number is `SidebarTouchWidth` in :integration:entrypoints, which nothing under
- * :feature: may depend on — so it is repeated rather than imported. It is the platform's minimum
- * touch target and has no reason to move; if it ever does, this is the sentence that starts lying.
- */
-private const val SidebarTouchWidthDp = 48
-
-private fun dpLabel(value: Float): String = "${value.roundToInt()}dp"
-
-/**
- * Which edge the strip is welded to.
- *
- * Two buttons rather than a menu: there are exactly two edges, they are never going to be three,
- * and a menu would hide half the answer behind a tap for no gain.
- */
-@Composable
-private fun SidebarSideRow(side: SidebarSide, onSideChange: (SidebarSide) -> Unit) {
-    Column(Modifier.padding(horizontal = Spacing.Lg, vertical = Spacing.Md)) {
-        Text("Edge", style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.height(Spacing.Sm))
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            SidebarSide.entries.forEachIndexed { index, option ->
-                SegmentedButton(
-                    selected = side == option,
-                    onClick = { onSideChange(option) },
-                    shape = SegmentedButtonDefaults.itemShape(index, SidebarSide.entries.size),
-                ) {
-                    Text(sideLabel(option))
-                }
-            }
-        }
-        Spacer(Modifier.height(Spacing.Sm))
-        Text(
-            text = "Left to begin with, because the right edge is usually taken — Samsung's own " +
-                "Edge panel handle lives there and is on out of the box. Two handles on one edge " +
-                "means one inward swipe and two things expecting it.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-private fun sideLabel(side: SidebarSide): String = when (side) {
-    SidebarSide.LEFT -> "Left"
-    SidebarSide.RIGHT -> "Right"
-}
-
-/**
  * One way in. [live] null means ArcX genuinely cannot tell — the icon stays neutral rather than
  * claiming a state, because a wrong green dot here is worse than no dot.
+ *
+ * [modifier] is where a row with a switch in it hands in its `toggleable`, the same way
+ * [SettingsSwitchRow] does: the row becomes the control, and the Switch stops owning a state whose
+ * name it does not carry. Without it a screen reader reached six switches all announcing "on,
+ * switch" with nothing to say which entry point each one was.
  */
 @Composable
 private fun SurfaceRow(
@@ -580,6 +356,7 @@ private fun SurfaceRow(
     title: String,
     subtitle: String,
     live: Boolean?,
+    modifier: Modifier = Modifier,
     trailing: @Composable () -> Unit,
 ) {
     val tint = if (live == true) {
@@ -588,8 +365,18 @@ private fun SurfaceRow(
         MaterialTheme.colorScheme.onSurfaceVariant
     }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            // Live and off are otherwise carried by the icon's tint alone, which is colour as the
+            // only channel. The state is said out loud instead; the icon stays decorative.
+            .semantics(mergeDescendants = true) {
+                // Nullable on purpose — say nothing rather than claim a state ArcX cannot tell.
+                when (live) {
+                    true -> stateDescription = "Live"
+                    false -> stateDescription = "Off"
+                    null -> Unit
+                }
+            }
             // 16, not the 15 this row alone used: it sits inside SettingsGroup's card, so this is
             // the card's interior and it has to line up with SettingsRow's, which is Lg. The
             // screen gutter is the one SettingsGroup states, further out.
@@ -633,12 +420,18 @@ private fun SurfaceRow(
     }
 }
 
+/**
+ * `onSurfaceVariant`, not `outline`. Measured on this theme, 11sp Medium on `surfaceContainerLow`
+ * read 4.05:1 in light mode against a 4.5:1 requirement — it is under the large-text threshold, so
+ * the 3:1 allowance does not apply. `outline` is an M3 *boundary* role, specified for 3:1 dividers
+ * and never correct for text. WorkflowPanel made the same swap for the same reason.
+ */
 @Composable
 private fun BuiltInBadge() {
     Text(
         text = "built in",
         style = MetaTextStyle,
-        color = MaterialTheme.colorScheme.outline,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(end = Spacing.Xs),
     )
 }
@@ -663,15 +456,3 @@ private fun PermissionPrompt(
         }
     }
 }
-
-/** Notifications are unconditional below Android 13, where there is no permission to hold. */
-private fun Context.hasNotificationPermission(): Boolean =
-    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
-        PackageManager.PERMISSION_GRANTED
-
-/** Flagged like the intents SystemSurfaces hands back, so it behaves the same from any context. */
-private fun Context.appNotificationSettings(): Intent =
-    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

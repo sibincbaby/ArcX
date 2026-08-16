@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.annotation.RequiresApi
+import androidx.core.app.NotificationManagerCompat
 import androidx.glance.appwidget.updateAll
 import com.arcx.core.domain.capture.SystemSurfaces
 import com.arcx.core.model.Workflow
@@ -106,6 +107,19 @@ class ArcxEntrypoints @Inject constructor(
 
     override fun isAccessibilityButtonAssigned(): Boolean =
         ArcxAccessibility.isButtonAssigned(context)
+
+    /**
+     * The manager's own answer, not a permission check: it covers the Android 13 permission, the
+     * app-level switch that exists on every version, and a channel-level block, which is the whole
+     * set of ways a workflow's notification can silently not appear.
+     */
+    override fun areNotificationsEnabled(): Boolean =
+        NotificationManagerCompat.from(context).areNotificationsEnabled()
+
+    override fun notificationSettingsIntent(): Intent =
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     override fun canAddQuickTile(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU

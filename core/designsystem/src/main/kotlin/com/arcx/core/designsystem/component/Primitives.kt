@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
@@ -25,6 +26,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -32,7 +35,12 @@ import androidx.compose.ui.unit.sp
 import com.arcx.core.designsystem.theme.MetaTextStyle
 import com.arcx.core.designsystem.theme.Spacing
 
-/** A quiet all-caps divider between runs of rows. Louder than nothing, quieter than a heading. */
+/**
+ * A quiet all-caps divider between runs of rows. Louder than nothing, quieter than a heading —
+ * to the eye. To a screen reader it is a heading, because it does a heading's job: it names the
+ * run of rows under it, and Entry points, the library and Activity are all long enough that
+ * without one there is no way past a group but through every row in it.
+ */
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
@@ -40,7 +48,9 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         letterSpacing = 0.6.sp,
-        modifier = modifier.padding(horizontal = Spacing.Gutter, vertical = Spacing.Sm),
+        modifier = modifier
+            .semantics { heading() }
+            .padding(horizontal = Spacing.Gutter, vertical = Spacing.Sm),
     )
 }
 
@@ -118,6 +128,18 @@ fun ArcxPill(
      * moment such a pill sits on anything else.
      */
     outlined: Boolean? = null,
+    /**
+     * Whether [selected] is a state this pill is reporting, or merely the highlight it happens
+     * not to have. Only the filter rows are the former, so only [CountPill] asks for it.
+     *
+     * It changes nothing on screen and everything to a screen reader: without it the wash is the
+     * *only* thing saying which filter is on, and a pill announces "Writing 6, button" whether it
+     * is the active category or not. With it the same pill says "selected". Off by default
+     * because the two pills that are plainly buttons — Home's surface chips, the gallery's
+     * Install — would otherwise each announce "not selected", which is an answer to a question
+     * nobody asked of them.
+     */
+    selectable: Boolean = false,
 ) {
     val shape = MaterialTheme.shapes.small
     val background = when {
@@ -149,10 +171,22 @@ fun ArcxPill(
                 },
             )
             .then(
-                if (onClick != null) {
-                    Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-                } else {
-                    Modifier
+                when {
+                    onClick == null -> Modifier
+                    // Still Role.Button — a filter pill is a button that reports a state, not a
+                    // radio in a group, and nothing here promises the group is single-select.
+                    // `selectable` adds the state and leaves the role alone.
+                    selectable -> Modifier.selectable(
+                        selected = selected,
+                        enabled = enabled,
+                        role = Role.Button,
+                        onClick = onClick,
+                    )
+                    else -> Modifier.clickable(
+                        enabled = enabled,
+                        role = Role.Button,
+                        onClick = onClick,
+                    )
                 },
             )
             .padding(horizontal = Spacing.Md),
@@ -199,6 +233,8 @@ fun CountPill(
         onClick = onClick,
         selected = selected,
         count = count,
+        // The one caller for which `selected` is a fact about the list rather than a highlight.
+        selectable = true,
     )
 }
 

@@ -65,6 +65,26 @@ interface SystemSurfaces {
     fun isAccessibilityButtonAssigned(): Boolean
 
     /**
+     * Whether ArcX may post notifications at all.
+     *
+     * Asked of the notification manager rather than of the POST_NOTIFICATIONS permission, because
+     * the permission only exists from Android 13 and the user can switch notifications off in app
+     * settings on every version — the manager's answer is the one that decides whether a workflow's
+     * notification output will actually appear.
+     *
+     * It is on the port rather than remembered in a composable because it outlives the screen that
+     * asks: a refusal in one session left the next one showing "Not allowed yet" beside a button
+     * that could do nothing. Home reads the same port and can show it too.
+     */
+    fun areNotificationsEnabled(): Boolean
+
+    /**
+     * ArcX's own page in system Settings — the only route left once Android has stopped showing
+     * the permission dialog.
+     */
+    fun notificationSettingsIntent(): Intent
+
+    /**
      * The Quick Settings tile. It has always been installable, but only by pulling the shade down,
      * finding the edit button and scrolling a list of unfamiliar tiles — so in practice nobody
      * found it. Android 13 added a system prompt that does it in one tap; below that there is no

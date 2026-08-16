@@ -20,6 +20,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.arcx.core.designsystem.theme.Spacing
@@ -156,7 +160,28 @@ fun NoticeCard(
     }
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                // An error card is always the answer to something the user just did, and it is as
+                // often as not drawn below whatever they were looking at — so on a screen reader
+                // it currently arrives silently and the run simply appears to have gone nowhere.
+                // Polite, so it waits for whatever TalkBack is already mid-sentence on.
+                //
+                // Errors only. A warning here is standing advice that was on the screen before the
+                // user arrived — Entry points' platform caution, the editor's — and announcing
+                // those on every visit is noise rather than news.
+                if (severity == NoticeSeverity.Error) {
+                    // Merged so the announcement is the whole card. Left unmerged the live node
+                    // has no text of its own and there is nothing to say; the action button sets
+                    // its own semantics and stays a separate stop either way.
+                    Modifier.semantics(mergeDescendants = true) {
+                        liveRegion = LiveRegionMode.Polite
+                    }
+                } else {
+                    Modifier
+                },
+            ),
         shape = MaterialTheme.shapes.large,
         color = container,
         contentColor = body,
@@ -241,6 +266,13 @@ fun SectionHeader(
             title,
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            // A heading to the platform as well as to the eye. Without this a screen reader has
+            // no way through Appearance, Privacy or Entry points but one row at a time — heading
+            // navigation is the gesture that skips a group, and it can only find groups that say
+            // they are one. On the Text rather than the Row so the heading node is the one
+            // carrying the title; a heading with no text of its own is one TalkBack lands on and
+            // then has nothing to read.
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(Modifier.weight(1f))
         if (actionLabel != null && onAction != null) {

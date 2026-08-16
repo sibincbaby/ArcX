@@ -94,6 +94,28 @@ data class UserSettings(
      * assignment is still theirs to make in system Settings.
      */
     val accessibilityButtonOffered: Boolean = false,
+    /**
+     * Whether the user has read ArcX's screen-reading disclosure and tapped accept.
+     *
+     * Play's User Data policy wants the disclosure in front of the user *before* the grant, with an
+     * affirmative action — and it says navigating away must not count as one. So this is written
+     * only from the accept button on the disclosure screen, never from a dismiss, a back press or a
+     * resume. It is remembered so the same wall of text is not put in front of someone who has
+     * already agreed to it and is only coming back to toggle the permission.
+     *
+     * It records consent, not the grant: Android owns the grant, and this stays true if the user
+     * later turns the service off.
+     */
+    val screenReadingConsented: Boolean = false,
+    /**
+     * Whether ArcX has ever put the POST_NOTIFICATIONS dialog on screen.
+     *
+     * Android will not show that dialog twice, and it offers no way to ask whether it already has —
+     * from outside an Activity there is nothing to tell "never asked" apart from "asked and
+     * refused". Without this the settings row said "Not allowed yet" forever and its Allow button
+     * did nothing, because the process that saw the refusal had long since died.
+     */
+    val notificationPermissionAsked: Boolean = false,
 ) {
     companion object {
 

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Icon
@@ -20,6 +21,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -36,6 +38,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.arcx.core.designsystem.component.ArcxListRowIconSize
@@ -170,6 +176,22 @@ internal fun SettingsRow(
     }
 }
 
+/**
+ * One setting, one control.
+ *
+ * It used to be two. The row took a `clickable` with [Role.Button] *and* the [Switch] kept a live
+ * `onCheckedChange`, which is two focusable nodes for one preference: a screen reader stopped
+ * first on "Dynamic colour, button" — a button carrying no on or off — and then again on the
+ * switch, which had the state but not the name of the thing it belonged to.
+ *
+ * `toggleable` is the shape Android's guidance gives for exactly this. The row carries the value
+ * and the [Role.Switch], so the whole row announces "Dynamic colour, on, switch" and one gesture
+ * flips it; the Switch keeps drawing the state and stops claiming to own it.
+ *
+ * Handed in as the modifier rather than through [SettingsRow]'s `onClick`, because that one can
+ * only ever be a button. It lands in the same place in the chain — outside `fillMaxWidth` and the
+ * row's own padding — so the ripple still covers the whole row and nothing moves by a pixel.
+ */
 @Composable
 internal fun SettingsSwitchRow(
     title: String,
@@ -182,11 +204,22 @@ internal fun SettingsSwitchRow(
 ) {
     SettingsRow(
         title = title,
-        modifier = modifier,
+        modifier = modifier
+            // Kept from the clickable it replaces: a row that ever loses its subtitle must not
+            // quietly drop under the 48dp minimum.
+            .minimumInteractiveComponentSize()
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            ),
         subtitle = subtitle,
         icon = icon,
-        onClick = if (enabled) ({ onCheckedChange(!checked) }) else null,
-        trailing = { Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled) },
+        onClick = null,
+        // null, not a second handler. The row is the control; a Switch with its own callback is
+        // the second focusable node this whole comment is about.
+        trailing = { Switch(checked = checked, onCheckedChange = null, enabled = enabled) },
     )
 }
 
@@ -203,7 +236,11 @@ internal fun SettingsSwitchRow(
  * Here rather than beside the sidebar sliders it was written for, because Appearance's
  * transparency slider is the same control with the same two-value dance, and a second copy of this
  * is a second place for that dance to be got subtly wrong.
+ *
+ * The opt-in buys the `track` slot, which is the only way to declare `steps` without also getting
+ * Material's tick marks — see the comment on it below.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SettingsSlider(
     title: String,
@@ -226,8 +263,22 @@ internal fun SettingsSlider(
         }
     }
 
+    // Material counts the values *between* the ends, so a 1% step across 0..85% is 84 of them.
+    // Declared rather than left at 0: with no steps the platform makes one up — TalkBack, a
+    // keyboard and Switch Access all adjust by a twentieth of the range, so a swipe moved the
+    // transparency by about 4% when the control's own step, and the number beside it, is 1%.
+    val steps = remember(valueRange, step) {
+        (((valueRange.endInclusive - valueRange.start) / step).roundToInt() - 1).coerceAtLeast(0)
+    }
+
     Column(Modifier.padding(horizontal = Spacing.Lg, vertical = Spacing.Sm)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            // The title and the number are this slider's label and its value, and the Slider below
+            // now says both. Left as nodes of their own they are two more swipes to get past and
+            // one of them announces a bare "40%" belonging to nothing.
+            modifier = Modifier.clearAndSetSemantics {},
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
@@ -242,6 +293,14 @@ internal fun SettingsSlider(
             )
         }
         Slider(
+            modifier = Modifier.semantics {
+                contentDescription = title
+                // The row's own number, said with the control instead of beside it. Slider would
+                // otherwise announce a percentage of the range — which is the same thing for the
+                // fractions and quite wrong for the two sliders measured in dp, where 152dp of
+                // 100..252 would be read out as "34%".
+                stateDescription = format(written)
+            },
             value = thumb,
             onValueChange = { raw ->
                 thumb = raw
@@ -252,6 +311,13 @@ internal fun SettingsSlider(
                 }
             },
             valueRange = valueRange,
+            steps = steps,
+            track = { sliderState ->
+                // steps is declared for the stepping, not for the scenery. Material draws a tick
+                // per step by default, and at 1% that is 84 dots on a 300dp bar — a dashed line,
+                // not a scale. Drawing none of them leaves the track exactly as it was.
+                SliderDefaults.Track(sliderState = sliderState, drawTick = { _, _ -> })
+            },
         )
         Text(
             text = supporting,

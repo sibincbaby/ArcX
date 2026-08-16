@@ -48,9 +48,30 @@ Play Console → Policy → App content → **Accessibility API usage**.
 
 ### Prominent disclosure (already implemented in-app)
 
-Shown in Settings → Entry points, **above** the control that opens the system accessibility
-screen, so the user reads it before granting. It must stay above the control — a disclosure
-below the button it describes does not satisfy the policy.
+The policy has three separate requirements and the app now meets all three. It previously met
+only the first, which is worth spelling out because the old arrangement looked finished:
+
+1. **The wording.** `arcx_accessibility_description` in `:core:designsystem`, used **verbatim** and
+   never paraphrased — Android renders the same string on its own Accessibility screen, and two
+   descriptions of one permission that differ by a word is what a reviewer reads as misleading.
+2. **The placement.** The policy says the disclosure "must be displayed in the normal usage of the
+   app and NOT require the user to navigate into a menu or settings". Living only at
+   Settings → Entry points was that prohibited placement. It is now pushed as its own screen the
+   first time the user asks to enable screen reading, from wherever they asked — and a copy still
+   sits immediately above the grant control on Settings → Permissions, because a disclosure below
+   the button it describes does not satisfy the policy either.
+3. **The consent.** An explicit accept button gates the jump to the system Accessibility screen.
+   Backing out, pressing back, or navigating away writes nothing — the policy is specific that
+   none of those may count as consent, and that the message may not auto-dismiss. The accept is
+   recorded in `UserSettings.screenReadingConsented` so the same wall of text is not put in front
+   of someone who has already agreed to it.
+
+**There is exactly one control in the whole app that opens `ACTION_ACCESSIBILITY_SETTINGS`** — the
+Screen reading row on Settings → Permissions, funnelled through a single function in
+`SettingsRoute`. There were two, with the disclosure between them, so the upper one described
+itself below the button. Everything else that wants the permission (the Entry points list, Home's
+screen-text chip) routes to that row. Keep it that way: a second call site is a second control that
+can be reached without the disclosure.
 
 ### Battery / correctness notes for the reviewer
 
@@ -86,7 +107,7 @@ Play Console → App content → **Foreground service types**.
 | Does the app collect or share user data? | **No data is collected by the developer.** ArcX has no backend and no analytics. |
 | Is data transferred off the device? | Yes — to the **AI provider the user chooses and configures with their own API key**. This is a user-directed transfer to a third party, not collection by ArcX. |
 | Is data encrypted in transit? | Yes — HTTPS to the provider. |
-| Can users request deletion? | Yes — Settings → Privacy → Delete all local data removes workflows, history and stored API keys. No server-side data exists to delete. |
+| Can users request deletion? | Yes — Settings → Privacy & data → Delete all local data removes workflows, history and stored API keys. No server-side data exists to delete. |
 | Data types transferred | Whatever the user runs a workflow on: selected text, clipboard contents, screen text, or shared files/images. Named explicitly rather than generically, since the user is the one choosing it each time. |
 
 **API keys:** stored only in an AES-256-GCM key from the Android Keystore, never transmitted

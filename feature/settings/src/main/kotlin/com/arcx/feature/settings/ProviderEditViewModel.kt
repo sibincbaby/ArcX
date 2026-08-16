@@ -168,8 +168,16 @@ class ProviderEditViewModel @Inject constructor(
 
         viewModelScope.launch {
             val config = state.toConfig()
-            // Null leaves the vault untouched, which is what an edit that never focused the key
-            // field means. A blank typed key is a deliberate removal and the repository honours it.
+            // A stored key is never read back into the field, so blank is this screen's resting
+            // state, not an instruction — an edit that only renamed the provider looks exactly
+            // like one that cleared the key. takeIf maps blank to null, and null is the
+            // repository's "leave the vault alone".
+            //
+            // Do not simplify this to `apiKey = state.apiKey`. A blank string takes the
+            // repository's other branch, vault.remove, so re-saving a label would destroy the one
+            // piece of data in ArcX the user cannot recover — silently, and with no undo. There is
+            // deliberately no way to clear a key from this screen; deleting the provider does it,
+            // behind a confirmation that says so.
             providers.upsert(config, apiKey = state.apiKey.takeIf { it.isNotBlank() })
             if (state.makeDefault) {
                 settings.update { it.copy(defaultProviderId = config.id) }

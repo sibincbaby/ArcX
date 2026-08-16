@@ -190,7 +190,7 @@ class HomeViewModel @Inject constructor(
 
     /**
      * Called on every resume. Overlay and accessibility can both be taken away in system
-     * Settings while ArcX is in the background, and a strip that still says "Bubble on" after
+     * Settings while ArcX is in the background, and a strip that still says "Sidebar on" after
      * that is worse than no strip at all.
      */
     fun onResume() {
@@ -212,7 +212,9 @@ class HomeViewModel @Inject constructor(
 
     private fun surfaceChips(bubbleEnabled: Boolean, granted: Permissions) = listOf(
         SurfaceChip(
-            label = if (bubbleEnabled && granted.overlayGranted) "Bubble on" else "Bubble off",
+            // "Sidebar", not "Bubble": the surface became an edge strip, and Settings calls it
+            // that everywhere. The stored flag keeps its old name; only the wording is user-facing.
+            label = if (bubbleEnabled && granted.overlayGranted) "Sidebar on" else "Sidebar off",
             state = if (bubbleEnabled && granted.overlayGranted) SurfaceState.LIVE else SurfaceState.OFF,
         ),
         // Both are declared in the manifest and cannot be switched off, so they never warn.
