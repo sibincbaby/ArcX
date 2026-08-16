@@ -1,6 +1,7 @@
 package com.arcx.feature.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -28,7 +30,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.arcx.core.designsystem.component.ArcxListRowIconSize
 import com.arcx.core.designsystem.theme.Spacing
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,6 +82,22 @@ internal fun SettingsGroup(
     }
 }
 
+/**
+ * The width every settings row reserves for its leading icon, whether that icon is a bare glyph
+ * or a tinted tile.
+ *
+ * It exists because Entry points draws two row anatomies on one screen — [SettingsRow] with a
+ * 24dp glyph and its own SurfaceRow with a 38dp tinted tile — and they put their titles 12dp
+ * apart, so two rows about the same permission did not line up with each other. Reserving one
+ * column and centring whatever is smaller inside it fixes that without shrinking the tile, which
+ * carries the live/off tint and is the point of that row.
+ *
+ * [ArcxListRowIconSize] rather than a number of its own: that is the column the library, the
+ * gallery, Activity and the runner's picker already lead with, so settings titles now start where
+ * every other list's do.
+ */
+internal val SettingsRowIconSize: Dp = ArcxListRowIconSize
+
 @Composable
 internal fun SettingsRow(
     title: String,
@@ -109,12 +129,20 @@ internal fun SettingsRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(end = Spacing.Lg),
-            )
+            // Centred in a fixed column rather than padded on one side: the glyph is 24dp and the
+            // tinted tile beside it on Entry points is 38dp, so only a shared column can line the
+            // two title runs up. The gap then matches ArcxListRow's, which is Md.
+            Box(
+                modifier = Modifier.size(SettingsRowIconSize),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(Spacing.Md))
         }
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)

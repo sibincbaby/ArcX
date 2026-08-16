@@ -220,6 +220,11 @@ internal fun EntryPointsScreen(
                         )
                     }
                 }
+                // Screen reading appears twice on this screen and both are wanted. This one is the
+                // capability, listed with the other ways in and counted in the number at the top,
+                // so it answers "is it working". The row further down, under the disclosure, is
+                // the grant behind it and answers "have I given it". Deleting either leaves a
+                // question the other cannot answer — the titles carry the difference instead.
                 SurfaceRow(
                     icon = Icons.Outlined.Visibility,
                     title = "Screen reading",
@@ -348,12 +353,22 @@ internal fun EntryPointsScreen(
                 }
             }
             SettingsGroup {
+                // "permission", because the row in the entry-point list above is already called
+                // Screen reading and the same words twice left the user guessing which one
+                // mattered. This is the grant itself: it reports whether it has been given, not
+                // whether the service is currently running — that is the other row's job, and it
+                // is why the two can honestly disagree when Android stops a granted service.
+                //
+                // The subtitle names Accessibility because that is where Android keeps this and
+                // ArcX's own name for it appears nowhere in system Settings. The quoted entry is
+                // arcx_accessibility_label in :integration:entrypoints; keep the two in step.
                 SettingsRow(
-                    title = "Screen reading",
+                    title = "Screen reading permission",
                     subtitle = if (screenReadingEnabled) {
-                        "Enabled — workflows can read screen text"
+                        "Granted — Android lists it under Accessibility as \"ArcX screen reading\""
                     } else {
-                        "Disabled — workflows that need screen text will ask for other input"
+                        "Not granted — turn on \"ArcX screen reading\" under Accessibility to let " +
+                            "workflows use what is on screen"
                     },
                     icon = Icons.Outlined.Accessibility,
                     trailing = {
@@ -459,8 +474,13 @@ private fun SurfaceRow(
                 MaterialTheme.colorScheme.surfaceContainerHighest
             },
             content = tint,
+            // Stated rather than left to TintedIcon's default, because SettingsRow reserves this
+            // same width for its bare glyph so the two anatomies share one title column. That is
+            // a promise between the two rows; a default either of them could move is not.
+            size = SettingsRowIconSize,
         )
-        Spacer(Modifier.width(14.dp))
+        // Was 14dp, off the scale and 2dp wider than the gap SettingsRow and ArcxListRow use.
+        Spacer(Modifier.width(Spacing.Md))
         Column(Modifier.weight(1f)) {
             Text(
                 text = title,
