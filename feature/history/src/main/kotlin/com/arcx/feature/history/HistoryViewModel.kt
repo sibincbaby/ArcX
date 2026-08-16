@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.arcx.core.common.di.DefaultDispatcher
 import com.arcx.core.common.time.TimeSource
 import com.arcx.core.common.time.startOfDay
+import com.arcx.core.common.time.timeTicker
 import com.arcx.core.domain.capture.ClipboardAccess
 import com.arcx.core.domain.repository.HistoryRepository
 import com.arcx.core.domain.repository.SettingsRepository
@@ -54,7 +55,12 @@ data class HistoryUiState(
     val days: List<HistoryDay> = emptyList(),
     val stats: RunStats = RunStats(),
     val historyEnabled: Boolean = true,
-    /** Pinned at emission time so every row's "3h ago" is measured against the same instant. */
+    /**
+     * Pinned at emission time so every row's "3h ago" is measured against the same instant, and
+     * refreshed on a timer rather than only when something upstream moves — see the ticker stage
+     * on [HistoryViewModel.uiState]. This screen's four sources can all sit still for an hour,
+     * which is how it came to disagree with Home about the age of the same run.
+     */
     val nowMillis: Long = 0L,
     val loading: Boolean = true,
     /**
@@ -91,16 +97,26 @@ class HistoryViewModel @Inject constructor(
         settings.settings.map { it.historyEnabled },
         detail,
     ) { runs, today, enabled, openRun ->
-        val now = time.nowMillis()
+        // Only the day headings need this one. Which calendar day a run belongs to never changes,
+        // so grouping is a function of the rows, not of how long the screen has been open — the
+        // sole thing a later instant could move is the "Today"/"Yesterday" wording at midnight,
+        // and `startOfToday` above already fixes that boundary for the session.
+        val groupedAt = time.nowMillis()
         HistoryUiState(
-            days = groupByDay(runs, now),
+            days = groupByDay(runs, groupedAt),
             stats = statsFor(today),
             historyEnabled = enabled,
-            nowMillis = now,
+            nowMillis = groupedAt,
             loading = false,
             detail = openRun,
         )
     }
+        // The tick replaces `now` without re-running the fold above, which is the expensive one:
+        // `groupByDay` allocates a ZonedDateTime per row over as many as RunRecord.HISTORY_LIMIT
+        // of them, and would rebuild identical headings every minute for nothing. The rows read
+        // `state.nowMillis` directly, so copying it is enough to redraw every "3h ago".
+        // Placed above `catch` so a throwing upstream still ends the flow here.
+        .combine(timeTicker(time)) { state, now -> state.copy(nowMillis = now) }
         // Above flowOn so the replacement state is built off the main thread with everything
         // else. A throwing flow is a finished flow, so this is the last thing Activity will
         // show until the screen is reopened — which is what the copy tells the user to do.

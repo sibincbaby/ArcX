@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.arcx.core.common.di.DefaultDispatcher
 import com.arcx.core.common.time.TimeSource
 import com.arcx.core.common.time.startOfDay
+import com.arcx.core.common.time.timeTicker
 import com.arcx.core.domain.capture.SystemSurfaces
 import com.arcx.core.domain.repository.HistoryRepository
 import com.arcx.core.domain.repository.SettingsRepository
@@ -74,7 +75,11 @@ data class HomeUiState(
     val tiles: List<HomeTile> = emptyList(),
     val recentRuns: List<RunSummary> = emptyList(),
     val surfaces: List<SurfaceChip> = emptyList(),
-    /** Pinned at emission so every row's "9m ago" is measured against the same instant. */
+    /**
+     * Pinned at emission so every row's "9m ago" is measured against the same instant, and
+     * refreshed on a timer rather than only when something upstream moves — see the ticker stage
+     * on [HomeViewModel.uiState].
+     */
     val nowMillis: Long = 0L,
     /** Separates "you have nothing yet" from "nothing matches what you typed". */
     val libraryIsEmpty: Boolean = false,
@@ -158,11 +163,17 @@ class HomeViewModel @Inject constructor(
             // is not; hide them rather than filter them into something meaningless.
             recentRuns = if (text.isBlank()) runs.recent else emptyList(),
             surfaces = surfaceChips(user.bubbleEnabled, granted),
-            nowMillis = time.nowMillis(),
             libraryIsEmpty = shelf.all.isEmpty(),
             loading = false,
         )
     }
+        // The clock is combined in rather than read inside the fold above, for two reasons. The
+        // fold is already at combine's five-flow typed arity — which is why `library` and
+        // `activity` are grouped in the first place — and re-running it every minute would
+        // re-sort, re-filter and re-map the whole library to move one word in a subtitle. `now`
+        // is the only part of this state that goes stale on its own, so it is the only part a
+        // tick touches. Placed above `catch` so a throwing upstream still ends the flow here.
+        .combine(timeTicker(time)) { state, now -> state.copy(nowMillis = now) }
         // Above flowOn so the replacement state is built off the main thread with everything
         // else. A throwing flow is a finished flow, so this is the last thing Home will show
         // until the screen is reopened — which is exactly what the copy tells the user to do.
