@@ -38,7 +38,7 @@ private enum class SettingsScreen {
 }
 
 /**
- * [startAtEntryPoints] is for the surface strip on Home. A chip that says the bubble is off is
+ * [startAtEntryPoints] is for the surface strip on Home. A chip that says the sidebar is off is
  * only useful if tapping it reaches the switch, and landing on the Settings index instead would
  * make the strip a signpost rather than a control.
  */
@@ -114,6 +114,11 @@ fun SettingsRoute(
             canAddQuickTile = state.permissions.canAddQuickTile,
             bubbleOpensFullList = state.settings.bubbleOpensFullList,
             compactPicker = state.settings.compactPicker,
+            sidebarSide = state.settings.sidebarSide,
+            sidebarVerticalPercent = state.settings.sidebarVerticalPercent,
+            sidebarLengthDp = state.settings.sidebarLengthDp,
+            sidebarWidthDp = state.settings.sidebarWidthDp,
+            sidebarOpacity = state.settings.sidebarOpacity,
             onBack = { screen = SettingsScreen.ROOT },
             onBubbleEnabledChange = viewModel::onBubbleEnabledChange,
             onLauncherIconChange = viewModel::onLauncherIconChange,
@@ -122,6 +127,11 @@ fun SettingsRoute(
             onAccessibilityButtonOfferedChange = viewModel::onAccessibilityButtonOfferedChange,
             onBubbleOpensFullListChange = viewModel::onBubbleOpensFullListChange,
             onCompactPickerChange = viewModel::onCompactPickerChange,
+            onSidebarSideChange = viewModel::onSidebarSideChange,
+            onSidebarVerticalPercentChange = viewModel::onSidebarVerticalPercentChange,
+            onSidebarLengthChange = viewModel::onSidebarLengthChange,
+            onSidebarWidthChange = viewModel::onSidebarWidthChange,
+            onSidebarOpacityChange = viewModel::onSidebarOpacityChange,
             onOpenOverlaySettings = { context.startActivity(viewModel.overlaySettingsIntent()) },
             onOpenScreenReadingSettings = {
                 context.startActivity(viewModel.screenReadingSettingsIntent())
@@ -215,7 +225,7 @@ private fun SettingsRootScreen(
 }
 
 private fun entryPointsSubtitle(state: SettingsUiState): String {
-    val bubble = if (state.bubbleActive) "Bubble on" else "Bubble off"
+    val bubble = if (state.bubbleActive) "Sidebar on" else "Sidebar off"
     val screen = if (state.permissions.screenReadingEnabled) {
         "Screen reading on"
     } else {

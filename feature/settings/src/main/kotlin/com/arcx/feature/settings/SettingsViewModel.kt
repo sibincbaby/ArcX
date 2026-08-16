@@ -12,6 +12,7 @@ import com.arcx.core.domain.usecase.DeleteAllScreenshotsUseCase
 import com.arcx.core.domain.usecase.PurgeExpiredScreenshotsUseCase
 import com.arcx.core.model.ProviderConfig
 import com.arcx.core.model.ScreenshotRetention
+import com.arcx.core.model.SidebarSide
 import com.arcx.core.model.ThemePreference
 import com.arcx.core.model.UserSettings
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -60,7 +61,7 @@ data class SettingsUiState(
     val permissions: SurfacePermissions = SurfacePermissions(),
     val loading: Boolean = true,
 ) {
-    /** A stored flag with no overlay permission behind it is not a bubble the user can see. */
+    /** A stored flag with no overlay permission behind it is not a sidebar the user can see. */
     val bubbleActive: Boolean get() = settings.bubbleEnabled && permissions.overlayGranted
 }
 
@@ -156,6 +157,20 @@ class SettingsViewModel @Inject constructor(
         update { it.copy(bubbleOpensFullList = enabled) }
 
     fun onCompactPickerChange(enabled: Boolean) = update { it.copy(compactPicker = enabled) }
+
+    // The five the sidebar is shaped by. Each is written straight through and nothing here clamps
+    // them: SettingsRepositoryImpl does that on the way in *and* on the way out, so a second copy
+    // of the bounds in this class would be one more place for them to disagree with the model's.
+    fun onSidebarSideChange(side: SidebarSide) = update { it.copy(sidebarSide = side) }
+
+    fun onSidebarVerticalPercentChange(percent: Float) =
+        update { it.copy(sidebarVerticalPercent = percent) }
+
+    fun onSidebarLengthChange(lengthDp: Int) = update { it.copy(sidebarLengthDp = lengthDp) }
+
+    fun onSidebarWidthChange(widthDp: Int) = update { it.copy(sidebarWidthDp = widthDp) }
+
+    fun onSidebarOpacityChange(opacity: Float) = update { it.copy(sidebarOpacity = opacity) }
 
     fun overlaySettingsIntent(): Intent = surfaces.overlaySettingsIntent()
 

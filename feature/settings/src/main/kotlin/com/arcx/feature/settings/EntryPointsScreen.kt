@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ViewSidebar
 import androidx.compose.material.icons.outlined.Accessibility
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.BatteryAlert
@@ -27,7 +28,6 @@ import androidx.compose.material.icons.outlined.CloseFullscreen
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.OpenInFull
-import androidx.compose.material.icons.outlined.PictureInPictureAlt
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.TextFields
@@ -35,12 +35,18 @@ import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -59,6 +65,10 @@ import com.arcx.core.designsystem.component.SectionLabel
 import com.arcx.core.designsystem.component.TintedIcon
 import com.arcx.core.designsystem.theme.MetaTextStyle
 import com.arcx.core.designsystem.theme.Spacing
+import com.arcx.core.model.SidebarSide
+import com.arcx.core.model.UserSettings
+import kotlin.math.round
+import kotlin.math.roundToInt
 
 /**
  * Everything that lets ArcX be used from outside its own window, led by how many of them are
@@ -87,12 +97,22 @@ internal fun EntryPointsScreen(
     canAddQuickTile: Boolean,
     bubbleOpensFullList: Boolean,
     compactPicker: Boolean,
+    sidebarSide: SidebarSide,
+    sidebarVerticalPercent: Float,
+    sidebarLengthDp: Int,
+    sidebarWidthDp: Int,
+    sidebarOpacity: Float,
     onBack: () -> Unit,
     onBubbleEnabledChange: (Boolean) -> Unit,
     onLauncherIconChange: (Boolean) -> Unit,
     onAddQuickTile: () -> Unit,
     onBubbleOpensFullListChange: (Boolean) -> Unit,
     onCompactPickerChange: (Boolean) -> Unit,
+    onSidebarSideChange: (SidebarSide) -> Unit,
+    onSidebarVerticalPercentChange: (Float) -> Unit,
+    onSidebarLengthChange: (Int) -> Unit,
+    onSidebarWidthChange: (Int) -> Unit,
+    onSidebarOpacityChange: (Float) -> Unit,
     onOpenOverlaySettings: () -> Unit,
     onOpenScreenReadingSettings: () -> Unit,
 ) {
@@ -162,9 +182,9 @@ internal fun EntryPointsScreen(
             Spacer(Modifier.height(18.dp))
             SettingsGroup {
                 SurfaceRow(
-                    icon = Icons.Outlined.PictureInPictureAlt,
-                    title = "Floating bubble",
-                    subtitle = "Draggable, floats over any app",
+                    icon = Icons.AutoMirrored.Outlined.ViewSidebar,
+                    title = "Edge sidebar",
+                    subtitle = "A thin strip down one edge — tap or swipe it from inside any app",
                     live = bubbleLive,
                 ) {
                     Switch(
@@ -206,7 +226,7 @@ internal fun EntryPointsScreen(
                                 "accessibility button and the volume-key shortcut can open."
                         accessibilityButtonAssigned ->
                             "Assigned — opens your workflows from inside any app, and it is the " +
-                                "one trigger besides the bubble that can photograph the screen"
+                                "one trigger besides the sidebar that can photograph the screen"
                         else ->
                             "Offered. Pick ArcX under the accessibility button in system Settings " +
                                 "to finish."
@@ -247,10 +267,75 @@ internal fun EntryPointsScreen(
 
             if (!overlayGranted) {
                 PermissionPrompt(
-                    body = "Drawing over other apps is off, so the bubble has nowhere to " +
-                        "appear. Grant it and the bubble switches on by itself.",
+                    body = "Drawing over other apps is off, so the sidebar has nowhere to " +
+                        "appear. Grant it and the sidebar switches on by itself.",
                     actionLabel = "Grant permission",
                     onAction = onOpenOverlaySettings,
+                )
+            }
+
+            // Only while there is a strip on screen to change. Five sliders under a switch that is
+            // off would be five controls with nothing at the other end of them — and the reason
+            // they are worth having here at all is that the overlay is a separate window that
+            // floats above this one, so a drag redraws the real strip rather than a preview of it.
+            if (bubbleLive) {
+                SectionLabel("Sidebar")
+                SettingsGroup {
+                    SidebarSideRow(side = sidebarSide, onSideChange = onSidebarSideChange)
+                    SidebarSlider(
+                        title = "Position",
+                        value = sidebarVerticalPercent,
+                        valueRange = 0f..1f,
+                        step = PercentStep,
+                        format = ::percentLabel,
+                        supporting = "Where the middle of the strip sits, from the top of the " +
+                            "screen down. Kept as a proportion rather than a distance, so it " +
+                            "comes back to the same place after you rotate the phone.",
+                        onValueChange = onSidebarVerticalPercentChange,
+                    )
+                    SidebarSlider(
+                        title = "Length",
+                        value = sidebarLengthDp.toFloat(),
+                        valueRange = UserSettings.SIDEBAR_MIN_LENGTH_DP.toFloat()..
+                            UserSettings.SIDEBAR_MAX_LENGTH_DP.toFloat(),
+                        step = 1f,
+                        format = ::dpLabel,
+                        // The cap is Android's, not a house style, and a user who hits it deserves
+                        // to know it will not move. See UserSettings.SIDEBAR_MAX_LENGTH_DP.
+                        supporting = "Stops at ${UserSettings.SIDEBAR_MAX_LENGTH_DP}dp because " +
+                            "Android stops there: it keeps the back gesture off this strip, and " +
+                            "it will only do that for ${UserSettings.SIDEBAR_MAX_LENGTH_DP}dp of " +
+                            "a screen edge. A longer strip would have a stretch at the end where " +
+                            "your swipe goes back instead of opening ArcX, with nothing on screen " +
+                            "to tell you where that stretch begins.",
+                        onValueChange = { onSidebarLengthChange(it.roundToInt()) },
+                    )
+                    SidebarSlider(
+                        title = "Thickness",
+                        value = sidebarWidthDp.toFloat(),
+                        valueRange = UserSettings.SIDEBAR_MIN_WIDTH_DP.toFloat()..
+                            UserSettings.SIDEBAR_MAX_WIDTH_DP.toFloat(),
+                        step = 1f,
+                        format = ::dpLabel,
+                        supporting = "How wide the strip is drawn — not how big a target it is. " +
+                            "It takes touches across a full ${SidebarTouchWidthDp}dp whatever " +
+                            "this says, so the default hairline is far easier to hit than it looks.",
+                        onValueChange = { onSidebarWidthChange(it.roundToInt()) },
+                    )
+                    SidebarSlider(
+                        title = "Opacity",
+                        value = sidebarOpacity,
+                        valueRange = 0f..1f,
+                        step = PercentStep,
+                        format = ::percentLabel,
+                        supporting = "Fades the strip you can see. The band it takes touches in " +
+                            "never fades with it, so even at nothing it still opens.",
+                        onValueChange = onSidebarOpacityChange,
+                    )
+                }
+                SettingsNote(
+                    "Each of these applies as you drag it. The strip is its own window sitting " +
+                        "above this screen, so what moves is the real thing.",
                 )
             }
 
@@ -279,25 +364,25 @@ internal fun EntryPointsScreen(
             )
 
             // Clearing ArcX from Recents kills its process, and Android does not restart the
-            // service afterwards on the OEMs that police background starts — the bubble is simply
+            // service afterwards on the OEMs that police background starts — the sidebar is simply
             // gone until the app is opened again. These two settings are the only levers a user
             // has, so say what they are for rather than listing permissions.
             Spacer(Modifier.height(Spacing.Sm))
             // Amber, not red: none of this is broken, it is the platform behaving as designed.
             NoticeCard(
                 severity = NoticeSeverity.Warning,
-                title = "Keeping the bubble alive",
+                title = "Keeping the sidebar alive",
                 icon = Icons.Outlined.BatteryAlert,
                 // NoticeCard draws no outer inset of its own, so the card states the gutter the
                 // groups above and below it sit on.
                 modifier = Modifier.padding(horizontal = Spacing.Gutter, vertical = 6.dp),
                 message = if (hasAutostartScreen) {
-                    "Clearing ArcX from Recents stops the bubble, and your phone will not bring " +
+                    "Clearing ArcX from Recents stops the sidebar, and your phone will not bring " +
                         "it back on its own. Autostart is what allows it to return; locking ArcX " +
                         "in Recents stops it being cleared in the first place. Opening ArcX, or " +
                         "using it from the share or selection menu, always brings it back."
                 } else {
-                    "Clearing ArcX from Recents stops the bubble until you open ArcX again, or " +
+                    "Clearing ArcX from Recents stops the sidebar until you open ArcX again, or " +
                         "use it from the share or selection menu."
                 },
             )
@@ -305,9 +390,9 @@ internal fun EntryPointsScreen(
                 SettingsRow(
                     title = "Battery optimisation",
                     subtitle = if (batteryExempt) {
-                        "Exempt — Android will not put the bubble to sleep"
+                        "Exempt — Android will not put the sidebar to sleep"
                     } else {
-                        "The bubble may be stopped in the background to save power"
+                        "The sidebar may be stopped in the background to save power"
                     },
                     icon = Icons.Outlined.BatteryStd,
                     trailing = {
@@ -406,19 +491,19 @@ internal fun EntryPointsScreen(
             }
             SettingsNote(
                 "Workflows that deliver their answer as a notification need this, and so does " +
-                    "the floating bubble, which Android requires to run behind an ongoing " +
+                    "the edge sidebar, which Android requires to run behind an ongoing " +
                     "notification.",
             )
 
-            // The two lists differ because the bubble's window may never take focus — without
+            // The two lists differ because the sidebar's window may never take focus — without
             // that, the app underneath stops being readable, which is the whole point of the
-            // bubble. A non-focusable window cannot host a text field, so its panel has no
+            // sidebar. A non-focusable window cannot host a text field, so its panel has no
             // search. Everything else opens a normal Activity and has no such limit. Both of
             // those are defaults, not rules, so both are switchable here.
             SectionLabel("Workflow list")
             SettingsGroup {
                 SettingsSwitchRow(
-                    title = "Bubble opens the full list",
+                    title = "Sidebar opens the full list",
                     subtitle = "Search included, like every other entry point. The screen is " +
                         "still read before the list appears, so workflows that use it keep " +
                         "working — but the list covers the app instead of floating over it.",
@@ -429,7 +514,7 @@ internal fun EntryPointsScreen(
                 SettingsSwitchRow(
                     title = "Compact list everywhere else",
                     subtitle = "Drops the search box from the tile, share sheet, shortcuts and " +
-                        "the drawer icon, so they match the bubble's panel.",
+                        "the drawer icon, so they match the sidebar's panel.",
                     icon = Icons.Outlined.CloseFullscreen,
                     checked = compactPicker,
                     onCheckedChange = onCompactPickerChange,
@@ -437,6 +522,127 @@ internal fun EntryPointsScreen(
             }
             Spacer(Modifier.height(Spacing.Xxl))
         }
+    }
+}
+
+/**
+ * The width the sidebar's window takes touches across, restated here for one sentence of copy.
+ *
+ * The real number is `SidebarTouchWidth` in :integration:entrypoints, which nothing under
+ * :feature: may depend on — so it is repeated rather than imported. It is the platform's minimum
+ * touch target and has no reason to move; if it ever does, this is the sentence that starts lying.
+ */
+private const val SidebarTouchWidthDp = 48
+
+/** Both fractions are stored and shown as whole percent, so that is the step they move in. */
+private const val PercentStep = 0.01f
+
+private fun percentLabel(value: Float): String = "${(value * 100).roundToInt()}%"
+
+private fun dpLabel(value: Float): String = "${value.roundToInt()}dp"
+
+/**
+ * Which edge the strip is welded to.
+ *
+ * Two buttons rather than a menu: there are exactly two edges, they are never going to be three,
+ * and a menu would hide half the answer behind a tap for no gain.
+ */
+@Composable
+private fun SidebarSideRow(side: SidebarSide, onSideChange: (SidebarSide) -> Unit) {
+    Column(Modifier.padding(horizontal = Spacing.Lg, vertical = Spacing.Md)) {
+        Text("Edge", style = MaterialTheme.typography.bodyLarge)
+        Spacer(Modifier.height(Spacing.Sm))
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            SidebarSide.entries.forEachIndexed { index, option ->
+                SegmentedButton(
+                    selected = side == option,
+                    onClick = { onSideChange(option) },
+                    shape = SegmentedButtonDefaults.itemShape(index, SidebarSide.entries.size),
+                ) {
+                    Text(sideLabel(option))
+                }
+            }
+        }
+        Spacer(Modifier.height(Spacing.Sm))
+        Text(
+            text = "Left to begin with, because the right edge is usually taken — Samsung's own " +
+                "Edge panel handle lives there and is on out of the box. Two handles on one edge " +
+                "means one inward swipe and two things expecting it.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun sideLabel(side: SidebarSide): String = when (side) {
+    SidebarSide.LEFT -> "Left"
+    SidebarSide.RIGHT -> "Right"
+}
+
+/**
+ * One number behind the strip, dragged live.
+ *
+ * The thumb is driven from local state and the setting is written only when the drag crosses a
+ * step the value is actually stored at — a whole dp, a whole percent. Driving the thumb straight
+ * from the stored value would put a DataStore write and a Flow round trip inside the gesture,
+ * which shows as the thumb trailing the finger; writing every intermediate float would rewrite
+ * the preferences file a few hundred times for one drag. Stepping keeps the live redraw and bounds
+ * the writes at one per step — 152 for the longest drag on this screen, and 100 for the fractions.
+ */
+@Composable
+private fun SidebarSlider(
+    title: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    step: Float,
+    format: (Float) -> String,
+    supporting: String,
+    onValueChange: (Float) -> Unit,
+) {
+    var thumb by remember { mutableFloatStateOf(value) }
+    var written by remember { mutableFloatStateOf(value) }
+    // Re-seed only when the stored value moved without this slider moving it — a reset elsewhere,
+    // or the clamp in SettingsRepositoryImpl refusing what was asked for. Re-seeding on the echo
+    // of this slider's own write would jump the thumb out from under the finger mid-drag.
+    LaunchedEffect(value) {
+        if (value != written) {
+            thumb = value
+            written = value
+        }
+    }
+
+    Column(Modifier.padding(horizontal = Spacing.Lg, vertical = Spacing.Sm)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+            )
+            // The committed value, not the raw thumb: the number and the strip should never
+            // disagree, and the strip only ever sees committed values.
+            Text(
+                text = format(written),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Slider(
+            value = thumb,
+            onValueChange = { raw ->
+                thumb = raw
+                val stepped = (round(raw / step) * step).coerceIn(valueRange)
+                if (stepped != written) {
+                    written = stepped
+                    onValueChange(stepped)
+                }
+            },
+            valueRange = valueRange,
+        )
+        Text(
+            text = supporting,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

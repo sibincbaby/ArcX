@@ -44,6 +44,7 @@ internal class SettingsRepositoryImpl @Inject constructor(
             prefs[Keys.BUBBLE_OPENS_FULL_LIST] = updated.bubbleOpensFullList
             prefs[Keys.COMPACT_PICKER] = updated.compactPicker
             prefs[Keys.SCREENSHOT_RETENTION] = updated.screenshotRetention.name
+            prefs[Keys.ACCESSIBILITY_BUTTON_OFFERED] = updated.accessibilityButtonOffered
             // The sidebar's four numbers are clamped on the way in as well as on the way out.
             // Clamping only on read would let a slider store 400dp and read back 200, so the next
             // thing to write the settings would round-trip a value the user never sees.
@@ -76,6 +77,8 @@ internal class SettingsRepositoryImpl @Inject constructor(
             screenshotRetention = this[Keys.SCREENSHOT_RETENTION]
                 ?.let { runCatching { enumValueOf<ScreenshotRetention>(it) }.getOrNull() }
                 ?: defaults.screenshotRetention,
+            accessibilityButtonOffered = this[Keys.ACCESSIBILITY_BUTTON_OFFERED]
+                ?: defaults.accessibilityButtonOffered,
             sidebarSide = this[Keys.SIDEBAR_SIDE]
                 ?.let { runCatching { enumValueOf<SidebarSide>(it) }.getOrNull() }
                 ?: defaults.sidebarSide,
@@ -106,6 +109,7 @@ internal class SettingsRepositoryImpl @Inject constructor(
         val BUBBLE_OPENS_FULL_LIST = booleanPreferencesKey("bubble_opens_full_list")
         val COMPACT_PICKER = booleanPreferencesKey("compact_picker")
         val SCREENSHOT_RETENTION = stringPreferencesKey("screenshot_retention")
+        val ACCESSIBILITY_BUTTON_OFFERED = booleanPreferencesKey("accessibility_button_offered")
         val SIDEBAR_SIDE = stringPreferencesKey("sidebar_side")
         val SIDEBAR_VERTICAL_PERCENT = floatPreferencesKey("sidebar_vertical_percent")
         val SIDEBAR_LENGTH_DP = intPreferencesKey("sidebar_length_dp")
