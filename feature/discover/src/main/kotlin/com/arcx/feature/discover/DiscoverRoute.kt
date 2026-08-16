@@ -39,8 +39,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -67,6 +65,7 @@ import com.arcx.core.designsystem.component.ArcxSearchField
 import com.arcx.core.designsystem.component.CountPill
 import com.arcx.core.designsystem.component.EmptyState
 import com.arcx.core.designsystem.component.LoadingState
+import com.arcx.core.designsystem.component.LocalSnackbarHostState
 import com.arcx.core.designsystem.component.SectionLabel
 import com.arcx.core.designsystem.component.WiringChips
 import com.arcx.core.designsystem.component.WorkflowIcon
@@ -92,7 +91,10 @@ fun DiscoverRoute(
 ) {
     val viewModel: DiscoverViewModel = hiltViewModel()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val snackbars = remember { SnackbarHostState() }
+    // The app's host, not one of its own. Discover used to be the only screen in ArcX that could
+    // say anything back, because it was the only one carrying a SnackbarHostState — which is why
+    // there is now exactly one, hoisted above the tabs.
+    val snackbars = LocalSnackbarHostState.current
 
     val open by rememberUpdatedState(onOpenWorkflow)
     LaunchedEffect(viewModel) { viewModel.installed.collect { open(it) } }
@@ -116,7 +118,6 @@ fun DiscoverRoute(
 
     DiscoverScreen(
         state = state,
-        snackbars = snackbars,
         modifier = modifier,
         onQueryChange = viewModel::setQuery,
         onCategoryChange = viewModel::setCategory,
@@ -136,7 +137,6 @@ fun DiscoverRoute(
 @Composable
 private fun DiscoverScreen(
     state: DiscoverUiState,
-    snackbars: SnackbarHostState,
     onQueryChange: (String) -> Unit,
     onCategoryChange: (WorkflowCategory?) -> Unit,
     onClearFilters: () -> Unit,
@@ -149,7 +149,6 @@ private fun DiscoverScreen(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbars) },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.padding(padding),

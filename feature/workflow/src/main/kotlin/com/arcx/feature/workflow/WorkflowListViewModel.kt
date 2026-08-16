@@ -7,6 +7,7 @@ import com.arcx.core.domain.capture.SystemSurfaces
 import com.arcx.core.domain.repository.WorkflowRepository
 import com.arcx.core.domain.usecase.DeleteWorkflowUseCase
 import com.arcx.core.domain.usecase.DuplicateWorkflowUseCase
+import com.arcx.core.domain.usecase.SaveWorkflowUseCase
 import com.arcx.core.domain.usecase.ToggleFavoriteUseCase
 import com.arcx.core.domain.usecase.TogglePinnedUseCase
 import com.arcx.core.model.Workflow
@@ -86,6 +87,7 @@ internal class WorkflowListViewModel @Inject constructor(
     private val favorite: ToggleFavoriteUseCase,
     private val pinned: TogglePinnedUseCase,
     private val remove: DeleteWorkflowUseCase,
+    private val restore: SaveWorkflowUseCase,
     private val clone: DuplicateWorkflowUseCase,
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
@@ -105,6 +107,17 @@ internal class WorkflowListViewModel @Inject constructor(
     /** Copies made from a read-only built-in open straight into the editor; nothing else navigates. */
     private val editRequests = Channel<String>(Channel.BUFFERED)
     val editCopyRequests: Flow<String> = editRequests.receiveAsFlow()
+
+    /**
+     * The workflow each delete removed, carried out to whoever offers the undo.
+     *
+     * The whole [Workflow] travels rather than its id because the row is gone by the time this is
+     * read — there is nothing left in the database to look it up from. It is deliberately not held
+     * in a field here: the collector owns it for exactly as long as its snackbar is on screen and
+     * drops it when that returns, so nothing survives a screen the user has walked away from.
+     */
+    private val deletions = Channel<Workflow>(Channel.BUFFERED)
+    val deletedWorkflows: Flow<Workflow> = deletions.receiveAsFlow()
 
     /**
      * Room's Flow throws into whoever collects it, which would cancel [uiState] and freeze the
@@ -191,7 +204,30 @@ internal class WorkflowListViewModel @Inject constructor(
     }
 
     fun delete(workflow: Workflow) {
-        viewModelScope.launch { remove(workflow.id) }
+        viewModelScope.launch {
+            remove(workflow.id)
+            deletions.send(workflow)
+        }
+    }
+
+    /**
+     * Puts a deleted workflow back, **with the id it had before**.
+     *
+     * That is the whole point of restoring the object rather than rebuilding one. A pinned
+     * home-screen shortcut and the favourites widget both fire `arcx://run/{id}`, and a launcher
+     * keeps a pinned shortcut whether or not the workflow behind it still exists — so a new id
+     * here would leave every one of them pointing at nothing, permanently, with no way for the
+     * user to tell what broke. [SaveWorkflowUseCase] only mints a UUID when the id is blank, so
+     * handing it the original workflow is enough; `WorkflowUseCasesTest` pins that behaviour.
+     *
+     * Two things do not come back with it. `updatedAt` is restamped — the repository sets it on
+     * every write — so a restored workflow surfaces at the top of "Recently updated". And
+     * `lastRunAt` is storage bookkeeping the model never carries, so the workflow is absent from
+     * Home's "Recent" row until it is next run. History rows are not involved either way: nothing
+     * cascades from a workflow delete, so they were never gone.
+     */
+    fun undoDelete(workflow: Workflow) {
+        viewModelScope.launch { restore(workflow) }
     }
 
     /**

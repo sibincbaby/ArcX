@@ -169,6 +169,20 @@ internal fun Context.shareText(subject: String, text: String) {
     startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 
+/**
+ * The one place in ArcX that still speaks in Toasts, and it has to.
+ *
+ * Everything else now shares the single SnackbarHostState hoisted into the Scaffold in
+ * `ArcxNavHost` — but that host lives in MainActivity's composition, and the runner is
+ * `RunnerActivity`: a separate, translucent Activity drawn over whatever app the user was in.
+ * There is no shared composition to reach into, and `LocalSnackbarHostState` would fall through
+ * to its unhosted default and say nothing at all.
+ *
+ * A Toast is also the only thing that still works after the case that needs it most. A CLIPBOARD
+ * workflow copies and closes in the same breath; a snackbar inside a window that is finishing goes
+ * with the window, while a Toast outlives it. That is the whole reason the confirmation is
+ * believable.
+ */
 internal fun Context.toast(message: String) {
     Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 }

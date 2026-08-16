@@ -22,9 +22,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavBackStackEntry
@@ -37,6 +41,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.arcx.core.designsystem.component.LocalSnackbarHostState
 import com.arcx.core.designsystem.theme.Motion
 import com.arcx.core.designsystem.theme.lateralEnter
 import com.arcx.core.designsystem.theme.lateralExit
@@ -112,7 +117,13 @@ fun ArcxNavHost(
         }
     }
 
+    // The app's one snackbar, owned here rather than by any screen. It sits above the bottom bar
+    // and survives a tab switch, which is what makes it usable for an undo — a host remembered
+    // inside a tab is destroyed the moment that tab leaves composition, taking the offer with it.
+    val snackbars = remember { SnackbarHostState() }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbars) },
         bottomBar = {
             // Animated rather than simply absent: the bar used to vanish and reappear in one
             // frame, which read as the screen flinching every time the editor opened.
@@ -147,88 +158,92 @@ fun ArcxNavHost(
             }
         },
     ) { padding ->
-        NavHost(
-            navController = navController,
-            startDestination = TopLevelDestination.HOME.route,
-            // padding offsets the content off the bar; consumeWindowInsets tells everything
-            // below that those insets are now spent. Without the second half every tab's own
-            // Scaffold reads the navigation-bar inset again and pads for it a second time —
-            // measured as a 48dp dead band above the bar, with the last row cut through its
-            // glyphs. Both are needed: consuming alone would let content run under the bar.
-            modifier = Modifier
-                .padding(padding)
-                .consumeWindowInsets(padding),
-            // Two transitions, picked by what the move actually means. Tabs are peers and get a
-            // fast fade-through; anything pushed on top of them rises and comes back down. The
-            // library's own default is one 700ms crossfade for both, which made a push look
-            // exactly like a tab switch and made every one of them feel slow.
-            enterTransition = { if (isLateral) lateralEnter() else pushEnter() },
-            exitTransition = { if (isLateral) lateralExit() else pushExit() },
-            popEnterTransition = { if (isLateral) lateralEnter() else popEnter() },
-            popExitTransition = { if (isLateral) lateralExit() else popExit() },
-        ) {
-            composable(TopLevelDestination.HOME.route) {
-                HomeRoute(
-                    onRunWorkflow = onRunWorkflow,
-                    onEditWorkflow = ::openEditor,
-                    onCreateWorkflow = { openEditor(null) },
-                    onSeeAllWorkflows = { openTab(TopLevelDestination.LIBRARY) },
-                    onSeeActivity = { openTab(TopLevelDestination.ACTIVITY) },
-                    onOpenSettings = { navController.navigate(SETTINGS_ROUTE) },
-                    onOpenEntryPoints = {
-                        navController.navigate("$SETTINGS_ROUTE?$SETTINGS_ARG=true")
-                    },
-                )
-            }
+        // Provided around the NavHost rather than around the Scaffold: every screen that
+        // could have something to say is inside it, and the bottom bar is not.
+        CompositionLocalProvider(LocalSnackbarHostState provides snackbars) {
+            NavHost(
+                navController = navController,
+                startDestination = TopLevelDestination.HOME.route,
+                // padding offsets the content off the bar; consumeWindowInsets tells everything
+                // below that those insets are now spent. Without the second half every tab's own
+                // Scaffold reads the navigation-bar inset again and pads for it a second time —
+                // measured as a 48dp dead band above the bar, with the last row cut through its
+                // glyphs. Both are needed: consuming alone would let content run under the bar.
+                modifier = Modifier
+                    .padding(padding)
+                    .consumeWindowInsets(padding),
+                // Two transitions, picked by what the move actually means. Tabs are peers and get a
+                // fast fade-through; anything pushed on top of them rises and comes back down. The
+                // library's own default is one 700ms crossfade for both, which made a push look
+                // exactly like a tab switch and made every one of them feel slow.
+                enterTransition = { if (isLateral) lateralEnter() else pushEnter() },
+                exitTransition = { if (isLateral) lateralExit() else pushExit() },
+                popEnterTransition = { if (isLateral) lateralEnter() else popEnter() },
+                popExitTransition = { if (isLateral) lateralExit() else popExit() },
+            ) {
+                composable(TopLevelDestination.HOME.route) {
+                    HomeRoute(
+                        onRunWorkflow = onRunWorkflow,
+                        onEditWorkflow = ::openEditor,
+                        onCreateWorkflow = { openEditor(null) },
+                        onSeeAllWorkflows = { openTab(TopLevelDestination.LIBRARY) },
+                        onSeeActivity = { openTab(TopLevelDestination.ACTIVITY) },
+                        onOpenSettings = { navController.navigate(SETTINGS_ROUTE) },
+                        onOpenEntryPoints = {
+                            navController.navigate("$SETTINGS_ROUTE?$SETTINGS_ARG=true")
+                        },
+                    )
+                }
 
-            composable(TopLevelDestination.LIBRARY.route) {
-                WorkflowListRoute(
-                    onRunWorkflow = onRunWorkflow,
-                    onEditWorkflow = ::openEditor,
-                    onCreateWorkflow = { openEditor(null) },
-                )
-            }
+                composable(TopLevelDestination.LIBRARY.route) {
+                    WorkflowListRoute(
+                        onRunWorkflow = onRunWorkflow,
+                        onEditWorkflow = ::openEditor,
+                        onCreateWorkflow = { openEditor(null) },
+                    )
+                }
 
-            composable(TopLevelDestination.DISCOVER.route) {
-                DiscoverRoute(onOpenWorkflow = ::openEditor)
-            }
+                composable(TopLevelDestination.DISCOVER.route) {
+                    DiscoverRoute(onOpenWorkflow = ::openEditor)
+                }
 
-            composable(TopLevelDestination.ACTIVITY.route) {
-                HistoryRoute(onRunWorkflow = onRunWorkflow)
-            }
+                composable(TopLevelDestination.ACTIVITY.route) {
+                    HistoryRoute(onRunWorkflow = onRunWorkflow)
+                }
 
-            composable(
-                route = "$SETTINGS_ROUTE?$SETTINGS_ARG={$SETTINGS_ARG}",
-                arguments = listOf(
-                    navArgument(SETTINGS_ARG) {
-                        type = NavType.BoolType
-                        defaultValue = false
-                    },
-                ),
-            ) { entry ->
-                SettingsRoute(
-                    onBack = { navController.popBackStack() },
-                    startAtEntryPoints = entry.arguments?.getBoolean(SETTINGS_ARG) == true,
-                )
-            }
+                composable(
+                    route = "$SETTINGS_ROUTE?$SETTINGS_ARG={$SETTINGS_ARG}",
+                    arguments = listOf(
+                        navArgument(SETTINGS_ARG) {
+                            type = NavType.BoolType
+                            defaultValue = false
+                        },
+                    ),
+                ) { entry ->
+                    SettingsRoute(
+                        onBack = { navController.popBackStack() },
+                        startAtEntryPoints = entry.arguments?.getBoolean(SETTINGS_ARG) == true,
+                    )
+                }
 
-            // One destination with an optional argument: navigating to "editor" with no
-            // argument falls through to the default and means "create a new workflow".
-            composable(
-                route = "$EDITOR_ROUTE?$EDITOR_ARG={$EDITOR_ARG}",
-                arguments = listOf(
-                    navArgument(EDITOR_ARG) {
-                        type = NavType.StringType
-                        nullable = true
-                        defaultValue = null
-                    },
-                ),
-            ) { entry ->
-                WorkflowEditorRoute(
-                    workflowId = entry.arguments?.getString(EDITOR_ARG),
-                    onDone = { navController.popBackStack() },
-                    onBack = { navController.popBackStack() },
-                )
+                // One destination with an optional argument: navigating to "editor" with no
+                // argument falls through to the default and means "create a new workflow".
+                composable(
+                    route = "$EDITOR_ROUTE?$EDITOR_ARG={$EDITOR_ARG}",
+                    arguments = listOf(
+                        navArgument(EDITOR_ARG) {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                    ),
+                ) { entry ->
+                    WorkflowEditorRoute(
+                        workflowId = entry.arguments?.getString(EDITOR_ARG),
+                        onDone = { navController.popBackStack() },
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
         }
     }

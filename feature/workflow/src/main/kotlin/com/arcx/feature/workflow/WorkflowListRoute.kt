@@ -38,6 +38,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -60,6 +62,7 @@ import com.arcx.core.designsystem.component.CountPill
 import com.arcx.core.designsystem.component.EmptyState
 import com.arcx.core.designsystem.component.ErrorCard
 import com.arcx.core.designsystem.component.LoadingState
+import com.arcx.core.designsystem.component.LocalSnackbarHostState
 import com.arcx.core.designsystem.component.SectionLabel
 import com.arcx.core.designsystem.component.WiringChips
 import com.arcx.core.designsystem.component.WorkflowIcon
@@ -90,6 +93,26 @@ fun WorkflowListRoute(
     val edit by rememberUpdatedState(onEditWorkflow)
     LaunchedEffect(viewModel) {
         viewModel.editCopyRequests.collect { edit(it) }
+    }
+
+    // Deleting is the one destructive thing this screen does, so it is the one thing that gets an
+    // undo. The snackbar's own result decides the outcome rather than a timer running alongside
+    // it: ActionPerformed means the user tapped Undo, anything else — timeout, a swipe, or this
+    // effect being cancelled because they left the tab — means the delete stands. `collect`
+    // suspends inside `showSnackbar`, so two quick deletes queue up two offers instead of racing,
+    // and the workflow being held is released the moment its snackbar is gone.
+    val snackbars = LocalSnackbarHostState.current
+    LaunchedEffect(viewModel, snackbars) {
+        viewModel.deletedWorkflows.collect { workflow ->
+            val result = snackbars.showSnackbar(
+                message = "Deleted ${workflow.name}",
+                actionLabel = "Undo",
+                // Ten seconds rather than four. An offer the user has to notice, read and reach
+                // for is not the same as a message they only have to read.
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete(workflow)
+        }
     }
 
     WorkflowListScreen(
